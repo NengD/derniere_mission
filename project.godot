@@ -8,6 +8,13 @@ config/description="FPS solo en caméra-piéton."
 run/main_scene="res://scenes/apercu/apercu.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 
+[autoload]
+
+Audio="*res://scripts/autoload/audio.gd"
+Reglages="*res://scripts/autoload/reglages.gd"
+Commandes="*res://scripts/autoload/commandes.gd"
+Jeu="*res://scripts/autoload/jeu.gd"
+
 [display]
 
 window/size/viewport_width=1920

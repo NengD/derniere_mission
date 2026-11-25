@@ -1,0 +1,10 @@
+[
+	{"id": 1, "scene": "res://scenes/niveaux/niveau_1.tscn", "cle": "NIV1", "otages": 1, "documents": 2},
+	{"id": 2, "scene": "", "cle": "NIV2", "otages": 1, "documents": 2},
+	{"id": 3, "scene": "", "cle": "NIV3", "otages": 1, "documents": 3},
+	{"id": 4, "scene": "", "cle": "NIV4", "otages": 1, "documents": 2},
+	{"id": 5, "scene": "", "cle": "NIV5", "otages": 2, "documents": 2},
+	{"id": 6, "scene": "", "cle": "NIV6", "otages": 2, "documents": 2},
+	{"id": 7, "scene": "", "cle": "NIV7", "otages": 1, "documents": 2},
+	{"id": 8, "scene": "", "cle": "NIV8", "otages": 1, "documents": 2}
+]
