@@ -12,5 +12,11 @@ Toutes les ressources sont gratuites et utilisables dans l'Union européenne. Ch
 | Pistolet générique (`assets/weapons/pistolet.glb`) | Créé pour ce projet (Claude, Blender : `tools/blender/build_pistol.py`) | Libre de droits | — | arme du joueur et du garde |
 | Sang, flaque, tag du cartel, flash de bouche (`assets/fx/`) | Créés pour ce projet (Claude, `tools/make_fx_textures.py`) | Libre de droits | — | effets |
 | Effet caméra-piéton (`shaders/camera_pieton.gdshader`) | Créé pour ce projet (Claude) | Libre de droits | — | image du jeu |
+| « The Free Firearm Sound Library » (Walther PPQ, Bersa) | Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney | CC0 | https://opengameart.org/content/the-free-firearm-sound-library | tirs du pistolet (proche / lointain) et des gardes (`assets/sons/tir_*`) |
+| « Gun Reload Sound Effects » | BMacZero | CC0 | https://opengameart.org/content/gun-reload-sound-effects | chargeur et culasse |
+| « 100 CC0 SFX #2 » | rubberduck | CC0 | https://opengameart.org/content/100-cc0-sfx-2 | impacts béton et métal, ambiances de machines et de hangar |
+| « Owlish Media Sound Effects » | Owlish Media | CC0 | https://opengameart.org/content/owlish-media-sound-effects | pas, respiration, souffle, toux, cri, impacts dans la chair, chute, grillons |
+| « Grunts (male) death and pain » | thebardofblasphemy | CC0 | https://opengameart.org/content/grunts-male-death-and-pain | cris de douleur des gardes |
+| Douilles, clic à vide, cœur, grésillement et bip radio | Créés pour ce projet (Claude, `tools/blender/make_sounds.py`) | Libre de droits | — | sons synthétisés |
 
 Moteur : [Godot Engine](https://godotengine.org) (licence MIT). Modélisation : [Blender](https://www.blender.org) (GPL, sans effet sur les fichiers produits).

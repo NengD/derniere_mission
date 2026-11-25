@@ -19,3 +19,4 @@ Thumbs.db
 # Vidéos de contrôle (lourdes) : jointes aux Releases, pas au dépôt
 docs/**/*.mp4
 CLAUDE.local.md
+/logs/
