@@ -1,0 +1,7 @@
+{
+	"_note": "Conditions des fins. Priorité : rebondissement > heureuse > tragique. Seuils entre 0.0 et 1.0.",
+	"rebondissement_si_document_cache": true,
+	"heureuse_seuil_otages": 1.0,
+	"heureuse_seuil_documents": 1.0,
+	"documents_compte_le_cache": false
+}

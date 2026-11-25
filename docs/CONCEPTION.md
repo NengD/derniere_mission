@@ -111,7 +111,7 @@ Les conditions sont lues dans un fichier de données (`data/fins.json`), faciles
 | Priorité | Fin | Condition (réglages par défaut) |
 |---|---|---|
 | 1 | **Rebondissement** — « Mission suivante : lui. » | le document caché a été trouvé |
-| 2 | **Heureuse, avec un prix** | tous les otages libérés **et** tous les documents trouvés (hors document caché) — seuils réglables, par défaut 100 % |
+| 2 | **Heureuse, avec un prix** | tous les otages libérés **et** tous les documents trouvés (hors document caché) — **100 %, choix du propriétaire** (seuils réglables dans `data/fins.json`) |
 | 3 | **Tragique** | tous les autres cas |
 
 - **Heureuse** : Marc tue le chef, libère Léa, est grièvement blessé. Léa le soutient jusqu'au bateau de secours, l'image tremble, écran noir. Épilogue « Trois mois plus tard… » : image fixe de Marc et Léa à la maison, lui avec une canne.
