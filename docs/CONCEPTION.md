@@ -133,7 +133,10 @@ Les conditions sont lues dans un fichier de données (`data/fins.json`), faciles
 | 8 Port | 1 (groupe) | 2 |
 | **Total** | **10** | **17 + 1 caché** |
 
-## 7. Direction artistique (à choisir)
+## 7. Direction artistique
+
+**Choix du propriétaire (25/11/2026) : A — photoréaliste sombre.** La variante B est conservée dans l'aperçu (`-- B`) pour mémoire.
+
 
 - **A — photoréaliste sombre** : couleurs ternes, éclairage froid de néons, grain léger, image « vraie caméra ».
 - **B — réaliste stylisé et contrasté** : noirs profonds, ombres bleu-vert, accents chauds (sodium, néons rouges), aberration chromatique plus marquée.
