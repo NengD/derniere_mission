@@ -3,7 +3,7 @@
 Mémoire de travail du projet : à relire après chaque compactage, à mettre à jour à chaque tâche terminée.
 
 ## Tâche en cours
-Phase 1 (tranche verticale, niveau 1) — tâche Joueur FAITE ; en cours : **gardes MPFB** (issue #1, confiée à un autre sous-agent ; captures + courte vidéo à montrer au propriétaire AVANT de continuer la tâche Garde).
+Phase 1 (tranche verticale, niveau 1) — tâches Joueur et gardes MPFB FAITES. **EN ATTENTE de l'avis du propriétaire** sur les gardes (captures `docs/phase1/gardes_*.jpg`, vidéo `docs/phase1/gardes.mp4`) avant de continuer la tâche Garde (IA, dégâts localisés, ragdoll).
 
 ## Fait
 - Phase 0 validée (tag `v0.0-phase0`) : direction artistique A (photoréaliste sombre), conception (`docs/CONCEPTION.md`), ressources (`docs/phase0/RESSOURCES.md`).
@@ -15,6 +15,7 @@ Phase 1 (tranche verticale, niveau 1) — tâche Joueur FAITE ; en cours : **gar
   - Tir du joueur → `recevoir_tir(degats, os_ou_zone, point, normale, direction, tireur)` sur le collider ou jusqu'à 4 parents ; `degats` = 55 × atténuation, le RECEVEUR applique `Degats.MULTIPLICATEUR[zone]` ; `os_ou_zone` = méta `"os"` (nom d'os UE) sinon méta `"zone"` ; méta décor `"materiau" = "metal"`.
   - Joueur (groupe `"joueur"`) : `recevoir_tir(...)`, `recevoir_degats(montant, zone, direction)` (montant déjà multiplié) ; signaux `mort`, `blesse`, `tir_bruit(position, portee)` (ouïe des gardes), `aide_changee`, `munitions_changees` ; `ramasser_chargeur(nb)`, `ramasser_trousse()`, `vers_dict/depuis_dict`, `capturer_souris(oui)` (le niveau l'appelle en jeu réel seulement). Interaction F : rayon 2 m couches 1+5 → `interagir(joueur)`, `texte_aide()` optionnel.
   - Reste : mains de Marc massives (bosse sous la culasse en visée), rechargement perfectible (main gauche ouverte, fond du chargeur soudé visible), pas de pas de côté, issue #3 non traitée.
+- Gardes MPFB (issue #1, sous-agent, vérifié) : MPFB 2.0.18 installé dans le profil Blender (extensions.blender.org) + 13 paquets officiels MakeHuman (`tools/blender/install_mpfb_packs.py`, sources dans `_sources/mpfb/`). `tools/blender/build_gardes_mpfb.py [-- garde_2 …]` → `assets/characters/gardes/garde_1..4.glb` (5-6 Mo, 42-59 k triangles) : 1 « El Flaco » 22 ans mince (casquette, bandana), 2 35 ans moyen (cagoule, gilet tactique), 3 « El Gordo » 48 ans en surpoids (cache-cou), 4 30 ans costaud (capuche, bandana, gilet). Squelette Quaternius (mêmes os), poids MPFB, animations UAL recalculées : `hand_r`, `finger_curl.gd`, `_calibrate_grips` marchent tels quels. Aperçu `scenes/apercu/gardes.tscn -- ensemble|visages|video|controle`. Reste : LOD à prévoir, anneau de peau sous la cagoule du garde 2, bandana petit et plaqué, cache-cou du garde 3 moulé sur le nez.
 
 ## Décisions
 - Direction A ; code MIT, contenus réservés ; fin heureuse à 100 % strict (`data/fins.json`).
