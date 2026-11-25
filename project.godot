@@ -20,6 +20,10 @@ Jeu="*res://scripts/autoload/jeu.gd"
 window/size/viewport_width=1920
 window/size/viewport_height=1080
 
+[internationalization]
+
+locale/translations=PackedStringArray("res://data/traductions.fr.translation")
+
 [rendering]
 
 renderer/rendering_method="forward_plus"

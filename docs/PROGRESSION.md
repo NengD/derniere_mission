@@ -3,12 +3,18 @@
 Mémoire de travail du projet : à relire après chaque compactage, à mettre à jour à chaque tâche terminée.
 
 ## Tâche en cours
-Phase 1 (tranche verticale, niveau 1) — tâche **Joueur** (confiée à un sous-agent) et, en parallèle, **gardes MPFB** (issue #1, confiée à un autre sous-agent ; captures + courte vidéo à montrer au propriétaire AVANT de continuer la tâche Garde).
+Phase 1 (tranche verticale, niveau 1) — tâche Joueur FAITE ; en cours : **gardes MPFB** (issue #1, confiée à un autre sous-agent ; captures + courte vidéo à montrer au propriétaire AVANT de continuer la tâche Garde).
 
 ## Fait
 - Phase 0 validée (tag `v0.0-phase0`) : direction artistique A (photoréaliste sombre), conception (`docs/CONCEPTION.md`), ressources (`docs/phase0/RESSOURCES.md`).
 - Phase 1, socle : autoloads `Audio`, `Reglages`, `Commandes`, `Jeu` (`scripts/autoload/`) ; logique pure `Degats`, `EtatArme`, `Fins`, `Score`, `Sauvegarde` (`scripts/logique/`) ; arbre de comportement `BT` (`scripts/ia/bt.gd`) ; 43 tests (`tests/tests_logique.gd`), tous verts.
 - Sons (commit 099214a) : 49 WAV mono 44,1 kHz dans `assets/sons/`, produits par `tools/blender/make_sounds.py` (tirs `tir_pistolet_1..3`, `tir_pistolet_loin_1..2`, `tir_garde_1..2`, `tir_garde_loin_1..2` ; `chargeur_sortie/entree`, `culasse`, `douille_1..3`, `clic_vide` ; `pas_dur_1..4`, `pas_doux_1..4` ; `respiration_calme/peur/affolee`, `souffle_coupe`, `toux`, `cri`, `coeur`, `douleur_1..4` ; `impact_chair/beton_1..3`, `impact_metal_1..2`, `chute_corps` ; `radio_bip`, `radio_gresil` ; boucles `amb_machines`, `amb_grillons`, `amb_hangar` — boucler à l'exécution). Crédits dans `CREDITS.md`.
+
+- Joueur (sous-agent, vérifié : 43 + 37 tests verts, captures `captures/joueur/`) : `scripts/joueur/joueur.gd` (+ `scenes/joueur/joueur.tscn`), `bras_ik.gd`, `camera_pieton.gd`, `fx_impact.gd` ; logique `sante_joueur.gd`, `dispersion.gd` ; salle de test `scenes/test/salle_test.tscn` (`-- photo <png> [jeu|visee|tir|pieds|penche|recharge|blesse|plan|mains]`, `-- video`) ; `data/traductions.csv` ; tests `tests/tests_joueur.gd`.
+  - Couches physiques : 1 monde, 2 joueur, 3 corps ennemis, 4 hitboxes, 5 interactifs. Corps/arme du joueur sur le calque de rendu 2 (décalques sur le calque 1 seulement).
+  - Tir du joueur → `recevoir_tir(degats, os_ou_zone, point, normale, direction, tireur)` sur le collider ou jusqu'à 4 parents ; `degats` = 55 × atténuation, le RECEVEUR applique `Degats.MULTIPLICATEUR[zone]` ; `os_ou_zone` = méta `"os"` (nom d'os UE) sinon méta `"zone"` ; méta décor `"materiau" = "metal"`.
+  - Joueur (groupe `"joueur"`) : `recevoir_tir(...)`, `recevoir_degats(montant, zone, direction)` (montant déjà multiplié) ; signaux `mort`, `blesse`, `tir_bruit(position, portee)` (ouïe des gardes), `aide_changee`, `munitions_changees` ; `ramasser_chargeur(nb)`, `ramasser_trousse()`, `vers_dict/depuis_dict`, `capturer_souris(oui)` (le niveau l'appelle en jeu réel seulement). Interaction F : rayon 2 m couches 1+5 → `interagir(joueur)`, `texte_aide()` optionnel.
+  - Reste : mains de Marc massives (bosse sous la culasse en visée), rechargement perfectible (main gauche ouverte, fond du chargeur soudé visible), pas de pas de côté, issue #3 non traitée.
 
 ## Décisions
 - Direction A ; code MIT, contenus réservés ; fin heureuse à 100 % strict (`data/fins.json`).

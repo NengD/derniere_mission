@@ -1,0 +1,9 @@
+keys,fr
+CAM_ID,CAM 07  ·  M. D.
+CAM_REC,REC
+HUD_MUNITIONS,%d | %d
+AIDE_INTERAGIR,Interagir
+AIDE_TOUCHE,[%s]  %s
+AIDE_CHARGEUR,Ramasser le chargeur
+AIDE_TROUSSE,Prendre la trousse de soin
+TEST_AIDE,"Salle de test : clic pour capturer la souris, Échap pour la libérer"
