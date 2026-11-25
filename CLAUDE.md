@@ -32,7 +32,7 @@ Marc Delmas, 48 ans, ex-commando, vient chercher sa fille Léa (22 ans), enlevé
 - Doigts : les animations libres tiennent le pistolet main ouverte → `scripts/finger_curl.gd` (axe Z). Main gauche ramenée sur l'arme par `TwoBoneIK3D`. Arme calée dans la main par calcul (`_calibrate_grips` dans l'aperçu).
 
 ## Avancement
-- [~] Phase 0 — recherche et direction artistique (25/11/2026) : tableau des ressources (`docs/phase0/RESSOURCES.md`), aperçus A et B (`docs/phase0/`), conception (`docs/CONCEPTION.md`). **Direction artistique A (photoréaliste sombre) choisie par le propriétaire le 25/11/2026** (tag `v0.0-phase0`). Licence choisie : code MIT, contenus tous droits réservés (`LICENSE`). Fin heureuse : 100 % strict (`data/fins.json`). Reste : installer `gh` (guidé) pour Issues / jalons / Releases.
+- [~] Phase 0 — recherche et direction artistique (25/11/2026) : tableau des ressources (`docs/phase0/RESSOURCES.md`), aperçus A et B (`docs/phase0/`), conception (`docs/CONCEPTION.md`). **Direction artistique A (photoréaliste sombre) choisie par le propriétaire le 25/11/2026** (tag `v0.0-phase0`). Licence choisie : code MIT, contenus tous droits réservés (`LICENSE`). Fin heureuse : 100 % strict (`data/fins.json`). `gh` installé et connecté (compte NengD) : étiquettes, jalons (Phase 0 à 4, Niveaux 2 à 8) et Issues #1–#3 créés.
 - [ ] Phase 1 — tranche verticale (niveau 1)
 - [ ] Phase 2 — arsenal et ennemis
 - [ ] Phase 3 — niveaux 2 à 8 et fins
