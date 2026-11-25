@@ -26,4 +26,4 @@ Avec Godot 4.7 et ses modèles d'export : `godot --headless --export-release "Wi
 
 ## Crédits et licence
 - Ressources externes et leurs licences : [CREDITS.md](CREDITS.md)
-- Licence du projet : [LICENSE](LICENSE) *(à choisir)*
+- Licence : [LICENSE](LICENSE) — code sous licence MIT ; histoire, textes et contenus créés pour le jeu tous droits réservés ; ressources externes sous leur propre licence (voir CREDITS.md)
