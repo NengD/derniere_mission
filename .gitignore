@@ -1,0 +1,21 @@
+# Godot
+.godot/
+*.translation
+export/
+build/
+# Sources téléchargées (régénérables par tools/)
+_sources/
+# Blender
+*.blend1
+__pycache__/
+# Captures et vidéos de travail
+/captures/
+*.avi
+# Divers
+*.tmp
+*.log
+.DS_Store
+Thumbs.db
+# Vidéos de contrôle (lourdes) : jointes aux Releases, pas au dépôt
+docs/**/*.mp4
+CLAUDE.local.md
