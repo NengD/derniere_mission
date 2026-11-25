@@ -16,6 +16,15 @@ Marc Delmas, 48 ans, ex-commando, vient chercher sa fille Léa (22 ans), enlevé
 - Après chaque phase : S'ARRÊTER, montrer captures ET vidéos (vérifiées avant), attendre l'avis.
 - Pas de ffmpeg sur ce PC : vidéos converties par le montage de Blender (`tools/blender/avi_to_mp4.py`, chemins complets ; `view_transform = Standard`).
 
+## Organisation du travail (demande du propriétaire, 25/11/2026)
+- Une seule session : ne jamais en ouvrir de nouvelle, on continue toujours dans celle-ci.
+- **Chef de projet / ouvriers** : la session principale ne fait pas les grosses tâches elle-même (joueur, garde, sang et démembrement, décor, exports, personnages MPFB, recherche de ressources…). Chaque grosse tâche part à un sous-agent à mémoire vierge, avec des instructions complètes et autonomes : objectif précis, fichiers à lire (CLAUDE.md, PROMPT_FPS_DERNIERE_MISSION.md, docs/PROGRESSION.md, docs/CONCEPTION.md), règles du projet (100 % gratuit, licences valables en France, crédits, texte via tr(), arrière-plan sans prendre le focus, tests qui passent), ce qu'il doit renvoyer.
+- Retour exigé COURT : fait, fichiers modifiés, résultat des tests, problèmes restants, chemins des captures et vidéos. Les sous-agents ne font ni commit ni push (sauf consigne contraire) : le chef vérifie (tests, une ou deux captures), met à jour docs/PROGRESSION.md, puis commit + push.
+- Tâches indépendantes lancées en parallèle quand c'est possible (fichiers distincts).
+- **Mémoire dans les fichiers** : `docs/PROGRESSION.md` (tâche en cours, fait, décisions, retours du propriétaire, prochaines étapes) mis à jour à chaque tâche terminée et avant toute opération longue. Retours importants aussi dans les Issues GitHub.
+- **Après chaque compactage** : relire CLAUDE.md, docs/PROGRESSION.md (et la partie utile de PROMPT_FPS_DERNIERE_MISSION.md) avant de continuer, puis reprendre sans demander.
+- **Économiser la mémoire** : longues sorties (téléchargements, exports, journaux, tests) redirigées dans `logs/` (ignoré par git), n'en lire que les erreurs et le résumé ; ne pas relire en entier les gros fichiers (chercher) ; images et vidéos avec parcimonie (une planche réduite plutôt que beaucoup d'images).
+
 ## Commandes
 - Chemins locaux de Godot 4.7.2 (console) et Blender 5.2 : dans `CLAUDE.local.md` (ignoré par git). Modèles d'export 4.7.2 installés.
 - Import : `godot --headless --path . --import`
@@ -33,7 +42,7 @@ Marc Delmas, 48 ans, ex-commando, vient chercher sa fille Léa (22 ans), enlevé
 
 ## Avancement
 - [~] Phase 0 — recherche et direction artistique (25/11/2026) : tableau des ressources (`docs/phase0/RESSOURCES.md`), aperçus A et B (`docs/phase0/`), conception (`docs/CONCEPTION.md`). **Direction artistique A (photoréaliste sombre) choisie par le propriétaire le 25/11/2026** (tag `v0.0-phase0`). Licence choisie : code MIT, contenus tous droits réservés (`LICENSE`). Fin heureuse : 100 % strict (`data/fins.json`). `gh` installé et connecté (compte NengD) : étiquettes, jalons (Phase 0 à 4, Niveaux 2 à 8) et Issues #1–#3 créés.
-- [ ] Phase 1 — tranche verticale (niveau 1)
+- [~] Phase 1 — tranche verticale (niveau 1), lancée le 25/11/2026. Socle et tests de logique faits. **Demande du propriétaire (issue #1)** : à la tâche « Garde », remplacer les corps Quaternius par des gardes MakeHuman / MPFB (CC0 ; ressources communautaires CC-BY à créditer), plusieurs variantes (corpulence, âge, vêtements, visage couvert), branchés sur les animations ; montrer captures + courte vidéo AVANT de continuer.
 - [ ] Phase 2 — arsenal et ennemis
 - [ ] Phase 3 — niveaux 2 à 8 et fins
 - [ ] Phase 4 — menus, options, polissage, exports
