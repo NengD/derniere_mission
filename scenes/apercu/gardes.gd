@@ -7,11 +7,15 @@ extends Node3D
 ##   visages <png>           : gros plan de deux visages couverts
 ##   controle <png> <anim>   : contrôle sans effet, éclairage plat, tous les gardes dans la même animation
 ##                             (option : nom d'animation, « @t » pour l'instant, ex. Death01@1.5)
-##   video                   : à lancer avec --write-movie x.avi --fixed-fps 30 ; joue la scène puis quitte
+##   video                   : à lancer avec --write-movie x.avi --fixed-fps 30 ; attente, marche prudente,
+##                             visée (animations CMU retravaillées), puis quitte
+##   (controle : suffixes « #g1 »…« #g4 » gros plan du visage du garde N, « #c1 »… en pied, « #d » de côté)
 
 const PH := "res://assets/decor/"
 const GARDES := ["garde_1", "garde_3", "garde_2", "garde_4"]
-const VIDEO_LEN := 7.5
+const VIDEO_LEN := 9.5
+## vitesses de marche des animations CMU (m/s, mesurées par tools/blender/retarget_cmu.py)
+const VITESSE := {"Cmu_Marche": 1.23, "Cmu_Marche_Lente": 0.95, "Cmu_Marche_Prudente": 0.95, "Visee_Marche": 0.95, "Cmu_Course": 3.04}
 
 var mode := "ensemble"
 var out_path := ""
@@ -213,6 +217,8 @@ func _build_guards() -> void:
 	if mode == "visages":
 		xs = [-1.9, -0.27, 0.27, 1.9]
 		z = -4.0
+	elif mode == "video":
+		z = -6.6      # assez loin pour marcher ~3 m vers la caméra
 	for i in GARDES.size():
 		var path := "res://assets/characters/gardes/%s.glb" % GARDES[i]
 		if not ResourceLoader.exists(path):
@@ -223,8 +229,8 @@ func _build_guards() -> void:
 		add_child(g)
 		guards.append(g)
 		var ap: AnimationPlayer = g.find_children("*", "AnimationPlayer", true, false)[0]
-		for n in ["Idle", "Pistol_Idle", "Pistol_Aim_Neutral", "Walk"]:
-			if ap.has_animation(n):
+		for n in ap.get_animation_list():   # boucles (« _Loop » retiré par l'import) + visée
+			if n.begins_with("Cmu_") or n.ends_with("_Vivante") or n in ["Idle", "Pistol_Idle", "Pistol_Aim_Neutral", "Walk", "Visee_Marche"]:
 				ap.get_animation(n).loop_mode = Animation.LOOP_LINEAR
 		anims.append(ap)
 		pistols.append(_attach_pistol(g))
@@ -261,7 +267,7 @@ func _calibrate_grips() -> void:
 		basis = basis.rotated(right, deg_to_rad(-4))
 		var pos := hand.origin.lerp(mid.origin, 0.55) + Vector3.DOWN * 0.035
 		g.global_transform = Transform3D(basis, pos)
-		g.visible = mode != "controle" or option.begins_with("Pistol")
+		g.visible = mode != "controle" or not (option.begins_with("Idle") or option.begins_with("Death") or option.begins_with("Hit"))
 
 
 func _play_all(n: String, blend := 0.25, stagger := 0.0) -> void:
@@ -295,7 +301,21 @@ func _place_camera() -> void:
 			cam.fov = 50
 			cam.position = Vector3(0.0, 1.3, -0.9)
 			cam.look_at(Vector3(0.0, 0.95, -4.0))
-			if option.ends_with("#tete"):     # gros plan des têtes (gardes 3 et 4 de la liste)
+			var gi := option.find("#g")
+			if gi >= 0 or option.find("#c") >= 0:
+				# gros plan d'un garde (#g1..#g4 : visage, #c1..#c4 : en pied), numéro = garde_N
+				var plein := gi < 0
+				var num := int(option.substr((gi if gi >= 0 else option.find("#c")) + 2, 1))
+				var g: Node3D = guards[GARDES.find("garde_%d" % num)]
+				var fwd := g.global_basis.z.normalized()
+				var side := fwd.cross(Vector3.UP).normalized()
+				var cible := g.global_position + Vector3(0, 0.95 if plein else 1.58, 0)
+				cam.fov = 34 if plein else 16
+				var ang := 0.35 if option.find("#d") < 0 else 1.2
+				var dir := (fwd * cos(ang) + side * sin(ang)).normalized()
+				cam.position = cible + dir * (3.2 if plein else 1.6) + Vector3(0, 0.05, 0)
+				cam.look_at(cible)
+			elif option.ends_with("#tete"):     # gros plan des têtes (gardes 3 et 4 de la liste)
 				cam.fov = 30
 				cam.position = Vector3(-0.6, 1.62, -2.6)
 				cam.look_at(Vector3(-0.6, 1.6, -4.0))
@@ -392,6 +412,14 @@ func _process(delta: float) -> void:
 
 
 func _start() -> void:
+	if option.find("#lod0") >= 0:
+		get_viewport().mesh_lod_threshold = 0.0
+	var ci := option.find("#cache=")      # contrôle : cache les maillages dont le nom contient le texte
+	if ci >= 0:
+		var motif := option.substr(ci + 7).split("#")[0]
+		for g in guards:
+			for m in g.find_children("*" + motif + "*", "MeshInstance3D", true, false):
+				(m as Node3D).visible = false
 	match mode:
 		"controle":
 			var parts := option.split("#")[0].split("@")
@@ -403,36 +431,31 @@ func _start() -> void:
 				if parts.size() > 1:
 					ap.pause()
 		"video":
-			_play_all("Idle", 0.0, 0.4)
-			for p in pistols:
-				p.visible = false
+			for i in anims.size():   # deux gardes attendent, deux scrutent la pièce
+				anims[i].play(["Cmu_Attente", "Cmu_Regard", "Cmu_Attente", "Cmu_Regard"][i], 0.0)
+				anims[i].seek(0.7 * i + 0.3, true)
 			phase = "idle"
 		"visages":
-			_play_all("Idle", 0.0, 0.6)
-			for p in pistols:
-				p.visible = false
+			_play_all("Cmu_Attente", 0.0, 0.6)
 		_:
-			_play_all("Pistol_Idle", 0.0, 0.35)
+			_play_all("Pistolet_Attente_Vivante", 0.0, 0.9)
 
 
 func _video(_delta: float) -> void:
-	# 0-1,8 s : repos ; 1,8-3,8 s : visée au pistolet ; 3,8-5,4 s : marche vers la caméra ; 5,4 s : mort
-	if t > 1.8 and phase == "idle":
-		phase = "aim"
-		for p in pistols:
-			p.visible = true
-		_play_all("Pistol_Aim_Neutral", 0.3)
-	if t > 3.8 and phase == "aim":
+	# 0-3 s : attente (captures CMU) ; 3-6,2 s : marche prudente vers la caméra, arme basse ;
+	# 6,2-9,5 s : arrêt et visée « vivante » (respiration, poids du corps)
+	if t > 3.0 and phase == "idle":
 		phase = "walk"
-		_play_all("Walk", 0.3, 0.15)
-	if phase == "walk":
-		for g in guards:
-			g.position.z += 0.85 * _delta
-	if t > 5.4 and phase == "walk":
-		phase = "dead"
 		for i in anims.size():
-			anims[i].play("Death01", 0.1)
-			anims[i].seek(0.0, true)
+			anims[i].play(["Cmu_Marche_Prudente", "Cmu_Marche_Lente", "Cmu_Marche_Prudente", "Cmu_Marche"][i], 0.45)
+			anims[i].seek(0.27 * i, true)
+	if phase == "walk":
+		for i in guards.size():
+			var n: StringName = anims[i].current_animation
+			guards[i].position.z += VITESSE.get(String(n), 0.9) * 0.96 * _delta
+	if t > 5.9 and phase == "walk":
+		phase = "aim"
+		_play_all("Visee_Vivante", 0.4, 0.8)
 	# léger mouvement de la caméra portée
 	cam.position = Vector3(0.1 + 0.01 * sin(t * 1.3), 1.62 + 0.006 * sin(t * 2.1), 0.2)
 	cam.look_at(Vector3(0.02 * sin(t * 0.7), 1.15, -4.0))

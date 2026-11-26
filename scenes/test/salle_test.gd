@@ -8,6 +8,8 @@ extends Node3D
 ##   video court : les 10,5 premières secondes seulement
 ##   perf [0|1|2]  même scénario en temps réel, vsync coupée : i/s moyenne et 1 % bas dans logs/perf.txt
 ##   video_bras (avec --write-movie) : 9,6 s de bras et d'arme (marche, 4 tirs, culasse ouverte, rechargement à vide)
+##   video_ragdoll [ext] (avec --write-movie) : 10,8 s, quatre gardes tués de quatre façons (tête, torse en
+##     marche, jambe puis achèvement au sol, bras puis torse) : ragdolls tous différents
 ## En photo et vidéo, aucune entrée réelle n'est lue et la souris n'est jamais capturée.
 
 const PH := "res://assets/decor/"
@@ -63,6 +65,14 @@ func _ready() -> void:
 	joueur.effet.saccades = mode != "photo" and mode != "perf"
 	if mode == "jeu":
 		joueur.effet.sous_titre(tr("TEST_AIDE"), 6.0)
+	FxSang.prechauffer(self, joueur.global_position + Vector3(0, 1.4, -0.6))
+	if mode == "video_ragdoll":
+		if _cam_ext:
+			joueur.effet.post.set_shader_parameter("intensity", 0.0)
+			_cam_ext.make_current.call_deferred()
+		for g in gardes:
+			g.touche.connect(func(gg: CorpsGarde, zone: int, deg: float, rea: int) -> void:
+				print("TOUCHE %s zone %d dégâts %.0f réaction %d à %.2f s" % [gg.name, zone, deg, rea, t]))
 	if mode == "photo" and (vue == "plan" or vue == "mains" or (vue == "recharge" and sortie.contains("plan"))):
 		_cam_ext = Camera3D.new()
 		_cam_ext.fov = 50 if vue == "plan" else 35
@@ -277,6 +287,13 @@ func _lampe(type: String, pos: Vector3, panne := "aucune") -> Lampe:
 
 
 func _cibles() -> void:
+	if mode == "video_ragdoll":
+		_gardes_ragdoll()
+		return
+	if mode == "perf":
+		# deux gardes de plus, tués au début de la mesure : 4 debout + 2 corps au sol
+		_garde("garde_1", Vector3(-0.9, 0, -5.2), 30.0, "Pistol_Idle")
+		_garde("garde_4", Vector3(0.9, 0, -13.6), -20.0, "Pistol_Idle")
 	var pos := [Vector3(0.55, 0, -9.5), Vector3(-0.8, 0, -12.8), Vector3(0.7, 0, -15.6)]
 	for i in pos.size():
 		var c := CibleTest.new()
@@ -285,64 +302,50 @@ func _cibles() -> void:
 		c.rotation_degrees.y = [-8.0, 12.0, 0.0][i]
 		add_child(c)
 		cibles.append(c)
-	# deux gardes réalistes immobiles (sans IA, sans collision) pour juger la lisibilité :
-	# l'un dans la zone sombre près du poteau, l'autre en contre-jour devant le rideau métallique
+	# gardes du cartel équipés de corps_garde.gd (hitboxes, dégâts localisés, ragdoll), sans IA :
+	# l'un dans la zone sombre près du poteau, l'autre en contre-jour devant le rideau métallique,
+	# plus deux autres au fond (en mode perf, ces deux-là sont tués d'entrée : corps au sol)
 	_garde("garde_2", Vector3(-0.95, 0, -7.6), 18.0, "Pistol_Idle")
 	_garde("garde_3", Vector3(-0.25, 0, -14.3), -4.0, "Pistol_Aim_Neutral")
+	_garde("garde_1", Vector3(1.05, 0, -11.2), -15.0, "Pistol_Idle")
+	_garde("garde_4", Vector3(0.95, 0, -16.2), 5.0, "Pistol_Idle")
 
 
-var gardes: Array[Node3D] = []
-var _prises: Array = []
+var gardes: Array[CorpsGarde] = []
 
 
-func _garde(nom: String, pos: Vector3, rot_y: float, anim: String) -> void:
-	var chemin := "res://assets/characters/gardes/%s.glb" % nom
-	if not ResourceLoader.exists(chemin):
-		return
-	var g: Node3D = (load(chemin) as PackedScene).instantiate()
+func _garde(nom: String, pos: Vector3, rot_y: float, anim: String) -> CorpsGarde:
+	var g := CorpsGarde.new()
 	g.name = nom
+	g.variante = nom
+	g.animation = anim
 	g.position = pos
 	g.rotation_degrees.y = rot_y
 	add_child(g)
 	gardes.append(g)
-	var ap: AnimationPlayer = g.find_children("*", "AnimationPlayer", true, false)[0]
-	for n in ["Pistol_Idle", "Pistol_Aim_Neutral"]:
-		if ap.has_animation(n):
-			ap.get_animation(n).loop_mode = Animation.LOOP_LINEAR
-	ap.play("Pistol_Aim_Neutral")   # pose de visée d'abord, pour caler l'arme dans la main
-	var sk: Skeleton3D = g.find_children("*", "Skeleton3D", true, false)[0]
-	var fc := FingerCurl.new()
-	fc.axis = Vector3(0, 0, 1)
-	sk.add_child(fc)
-	var ba := BoneAttachment3D.new()
-	ba.bone_name = "hand_r"
-	sk.add_child(ba)
-	var p: Node3D = (load("res://assets/weapons/pistolet.glb") as PackedScene).instantiate()
-	p.visible = false
-	ba.add_child(p)
-	_prises.append([g, sk, p, ap, anim])
-	_caler_arme.call_deferred()
+	return g
 
 
-## Cale l'arme dans la main des gardes une fois la pose de visée appliquée (même calcul que l'aperçu).
-func _caler_arme() -> void:
-	if _prises.is_empty() or _faits.has("prises"):
-		return
-	_faits["prises"] = true
-	await get_tree().process_frame
-	await get_tree().process_frame
-	for e in _prises:
-		var g: Node3D = e[0]
-		var sk: Skeleton3D = e[1]
-		var p: Node3D = e[2]
-		var main := sk.global_transform * sk.get_bone_global_pose(sk.find_bone("hand_r"))
-		var milieu := sk.global_transform * sk.get_bone_global_pose(sk.find_bone("middle_01_r"))
-		var avant: Vector3 = g.global_basis.z.normalized()
-		var droite := Vector3.UP.cross(-avant).normalized()
-		var b := Basis(droite, Vector3.UP, -avant).orthonormalized().rotated(droite, deg_to_rad(-4))
-		p.global_transform = Transform3D(b, main.origin.lerp(milieu.origin, 0.55) + Vector3.DOWN * 0.035)
-		p.visible = true
-		(e[3] as AnimationPlayer).play(e[4], 0.3)
+## Gardes de la vidéo des morts : un qui attend, un qui traverse le couloir, le gros, un qui vise.
+func _gardes_ragdoll() -> void:
+	_garde("garde_1", Vector3(0.3, 0, -5.5), 8.0, "Pistol_Idle")
+	_garde("garde_2", Vector3(-1.3, 0, -7.0), 90.0, "Pistol_Idle")
+	_garde("garde_3", Vector3(-0.45, 0, -8.3), 6.0, "Pistol_Aim_Neutral")
+	_garde("garde_4", Vector3(0.55, 0, -9.5), -12.0, "Pistol_Aim_Neutral")
+	if sortie == "ext":
+		# vue de contrôle depuis le côté, sans effet caméra-piéton, un peu de lumière sur la scène
+		_cam_ext = Camera3D.new()
+		_cam_ext.fov = 62
+		add_child(_cam_ext)
+		_cam_ext.position = Vector3(0.95, 2.25, -3.3)
+		_cam_ext.look_at_from_position(_cam_ext.position, Vector3(-0.25, 0.4, -7.7))
+		_cam_ext.make_current()
+		var l := OmniLight3D.new()
+		l.position = Vector3(0.4, 2.6, -6.8)
+		l.omni_range = 6.0
+		l.light_energy = 0.9
+		l.shadow_enabled = true
+		add_child(l)
 
 
 # ---------------------------------------------------------------- jeu réel : souris
@@ -360,6 +363,15 @@ func _unhandled_input(ev: InputEvent) -> void:
 
 func _physics_process(delta: float) -> void:
 	t += delta
+	if mode == "video_ragdoll":
+		_video_ragdoll()
+		if t >= DUREE_RAGDOLL and _une_fois("fin"):
+			_quitter()
+		return
+	if mode == "perf" and t >= 0.2 and gardes.size() >= 6 and _une_fois("corps"):
+		# les deux gardes en plus tombent : corps au sol pendant toute la mesure
+		for g in [gardes[0], gardes[1]]:
+			g.recevoir_tir(55.0, "Head", g.global_position + Vector3(0, 1.6, 0), Vector3.ZERO, Vector3(0.2, 0, -1).normalized(), null)
 	if mode == "video" or mode == "perf":
 		_video()
 		if t >= (10.5 if sortie == "court" else DUREE_VIDEO) and _une_fois("fin"):
@@ -456,6 +468,79 @@ func _video() -> void:
 		j.recevoir_tir(35.0, "", j.global_position + Vector3(0, 1.3, 0), Vector3.ZERO, j.global_basis * Vector3(0.2, 0, 1), null)
 	if t >= 15.3 and _une_fois("b2"):
 		j.recevoir_tir(35.0, "", j.global_position + Vector3(0, 1.2, 0), Vector3.ZERO, j.global_basis * Vector3(-0.3, 0, 1), null)
+
+
+## Vidéo des morts (10,8 s) : [début de la visée, heure du tir, garde, os visé]. Le joueur vise
+## réellement l'os (hitbox) et tire avec son arme dès que le viseur est dessus : balle dans la tête
+## d'un garde qui attend, deux balles dans le torse d'un garde qui marche, jambe du gros (il tombe
+## assis) puis achèvement, bras d'un garde qui vise (le bras retombe) puis deux balles.
+const PLAN_RAGDOLL := [
+	[0.5, 1.5, 0, "Head"],
+	[2.1, 2.95, 1, "spine_03"],
+	[3.0, 3.3, 1, "spine_01"],
+	[3.8, 4.6, 2, "thigh_l"],
+	[5.5, 6.4, 2, "spine_03"],
+	[6.5, 6.85, 2, "spine_03"],
+	[7.4, 8.1, 3, "upperarm_r"],
+	[8.6, 9.1, 3, "spine_03"],
+	[9.2, 9.45, 3, "spine_01"],
+]
+const DUREE_RAGDOLL := 10.8
+
+
+func _video_ragdoll() -> void:
+	var j := joueur
+	j.auto_axes = Vector2.ZERO
+	j.auto_tenu.clear()
+	if t < 0.05:
+		j.global_position = Vector3(0.05, 0.05, -2.6)
+		j.arme.chambre = true
+		j.arme.chargeur = 15
+	# le garde 2 traverse le couloir de gauche à droite
+	if t >= 1.5 and _une_fois("marche"):
+		gardes[1].marcher(Vector3(1.25, 0, 0))
+	if t >= 4.6 and gardes[1].vivant and _une_fois("arret"):
+		gardes[1].arreter()
+	var actif: Array = []
+	for e in PLAN_RAGDOLL:
+		if t >= e[0] and not _faits.has("tir_%s_%s" % [e[1], e[3]]):
+			actif = e
+			break
+	if actif.is_empty():
+		_regarder(rad_to_deg(j.lacet), -6.0, 0.4)
+		return
+	j.auto_tenu["viser"] = true
+	var g: CorpsGarde = gardes[actif[2]]
+	var hb := g.get_node_or_null("hb_" + str(actif[3])) as Node3D
+	if hb == null:
+		return
+	var cible := _point_degage(hb)
+	_viser_vers(cible, 2.2)
+	var vers := (cible - j.camera.global_position).normalized()
+	var ecart := rad_to_deg(vers.angle_to(-j.camera.global_basis.z))
+	if t >= actif[1] and (ecart < 0.5 or t > actif[1] + 0.6):
+		_faits["tir_%s_%s" % [actif[1], actif[3]]] = true
+		j.auto_appui["tirer"] = true
+		var q := PhysicsRayQueryParameters3D.create(j.camera.global_position, j.camera.global_position - j.camera.global_basis.z * 30.0, 1 | 8, [j.get_rid()])
+		q.collide_with_areas = true
+		var r := get_world_3d().direct_space_state.intersect_ray(q)
+		print("TIR %s %s écart %.2f° → %s" % [g.name, actif[3], ecart, ("%s %s" % [(r["collider"] as Node).name, r["position"]]) if not r.is_empty() else "rien"])
+
+
+## Point de la hitbox que le joueur voit sans obstacle (bras devant le torse, autre garde…) : centre,
+## puis quelques décalages ; à défaut le centre.
+func _point_degage(hb: Node3D) -> Vector3:
+	var depart := joueur.camera.global_position
+	var ds := get_world_3d().direct_space_state
+	var b := hb.global_basis.orthonormalized()
+	for d in [Vector3.ZERO, b.y * 0.08, -b.y * 0.08, b.x * 0.06, -b.x * 0.06, b.y * 0.14, -b.y * 0.14]:
+		var p: Vector3 = hb.global_position + d
+		var q := PhysicsRayQueryParameters3D.create(depart, p + (p - depart).normalized() * 0.3, 1 | 8, [joueur.get_rid()])
+		q.collide_with_areas = true
+		var r := ds.intersect_ray(q)
+		if not r.is_empty() and r["collider"] == hb:
+			return p
+	return hb.global_position
 
 
 ## Vidéo courte des bras et de l'arme (9,6 s) : marche, visée, quatre tirs jusqu'à la culasse ouverte,

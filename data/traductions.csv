@@ -7,3 +7,4 @@ AIDE_TOUCHE,[%s]  %s
 AIDE_CHARGEUR,Ramasser le chargeur
 AIDE_TROUSSE,Prendre la trousse de soin
 TEST_AIDE,"Salle de test : clic pour capturer la souris, Échap pour la libérer"
+AIDE_CHARGEUR_GARDE,Ramasser le chargeur (%d cartouches)

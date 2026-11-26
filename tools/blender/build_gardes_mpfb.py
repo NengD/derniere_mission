@@ -27,7 +27,12 @@ import importlib
 import math
 import os
 import sys
+import time
 import numpy as np
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import retarget_cmu  # noqa: E402
+import vieillir_gardes  # noqa: E402
 from mathutils import Matrix, Quaternion, Vector
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
@@ -62,9 +67,9 @@ GARDES = {
             ("elvs_crude_t-shirt_male.mhclo", ("grad", (0.07, 0.08, 0.09), (0.42, 0.44, 0.45))),
             ("punkduck_male_classic_jeans.mhclo", None),
             ("culturalibre_sneakers.mhclo", ("grad", (0.03, 0.03, 0.03), (0.42, 0.42, 0.4))),
-            ("culturalibre_bandana_mask.mhclo", ("grad", (0.015, 0.015, 0.018), (0.42, 0.4, 0.36))),
             ("mindfront_patrol_cap.mhclo", ("mul", (0.8, 0.8, 0.75))),
-        ]),
+        ],
+        masque=("bandana", (0.03, 0.03, 0.034))),
     "garde_2": dict(
         desc="35 ans, carrure moyenne, métis amérindien ; cagoule noire, t-shirt camouflage, gilet tactique olive, cargo noir, rangers",
         pheno=dict(gender=1.0, age=0.577, muscle=0.62, weight=0.5, height=0.48, proportions=0.55,
@@ -92,7 +97,7 @@ GARDES = {
             ("elvs_jeans_straight_leg.mhclo", None),
             ("toigo_ankle_boots_male.mhclo", ("mul", (0.75, 0.7, 0.65))),
         ],
-        couvre=("cachecou", (0.03, 0.031, 0.033), (0.36, 0.37, 0.38))),
+        masque=("cachecou", (0.11, 0.115, 0.12))),
     "garde_4": dict(
         desc="30 ans, costaud, métis ; capuche olive + bandana kaki, polo noir, gilet tactique noir, cargo olive, baskets montantes",
         pheno=dict(gender=1.0, age=0.54, muscle=0.85, weight=0.62, height=0.6, proportions=0.6,
@@ -106,13 +111,14 @@ GARDES = {
             ("mindfront_tactical_vest_male.mhclo", ("grad", (0.01, 0.01, 0.01), (0.22, 0.22, 0.21))),
             ("shoes02.mhclo", ("mul", (0.6, 0.6, 0.58))),
             ("culturalibre_hero-heroine_hood_1.mhclo", ("tissu", "cagoule", 6.0, (0.03, 0.035, 0.02), (0.3, 0.31, 0.2))),
-            ("culturalibre_bandana_mask.mhclo", ("grad", (0.06, 0.055, 0.035), (0.5, 0.46, 0.34))),
-        ]),
+        ],
+        masque=("bandana", (0.2, 0.18, 0.12))),
 }
 
 # os dont la rotation de correspondance est l'identité (tronc, cou, tête, clavicules : déjà alignés)
 IDENT = {"root", "pelvis", "spine_01", "spine_02", "spine_03", "neck_01", "Head", "clavicle_l", "clavicle_r"}
-COQUILLE_ECHELLE = 14.0   # répétition du tricot sur les UV de la peau
+COQUILLE_ECHELLE = 14.0
+CUIRE = "--sans-cuisson" not in sys.argv      # cuisson Cycles des tenues et de la peau (~1 à 2 min par garde)   # répétition du tricot sur les UV de la peau
 FINGERS = ["thumb", "index", "middle", "ring", "pinky"]
 MPFB_NAME = {"Head": "head", "root": "Root"}   # Quaternius -> MPFB
 
@@ -242,6 +248,9 @@ def rough_for(asset):
     return 0.88
 
 
+A_CUIRE = {}      # objet -> (genre, image de base, normal map, couleur unie, préfixe) : cuisson Cycles
+
+
 def habiller(ob, kind, asset_file, retouche, data_dir, nom):
     """Remplace le matériau MakeHuman d'un objet par un matériau simple exportable en glTF."""
     asset = os.path.splitext(asset_file)[0]
@@ -260,6 +269,8 @@ def habiller(ob, kind, asset_file, retouche, data_dir, nom):
         diff = prep_tex(os.path.join(TEX_PROJET, tissu + "_diff.jpg"), tag + "_diff", 1024, rt)
         nor = prep_tex(os.path.join(TEX_PROJET, tissu + "_nor_gl.jpg"), tag + "_nor", 1024, None, True)
         mat = make_mat(os.path.basename(tag), diff, nor, 0.95, scale=scale, nor_strength=0.9)
+        moy = tuple((a + b) / 2 for a, b in zip(c0, c1)) if c0 else (0.3, 0.3, 0.3)
+        A_CUIRE[ob] = (kind, None, None, moy, tag)
     else:
         size = {"skin": 2048, "eyes": 512, "eyebrows": 512, "hair": 1024}.get(kind, 1024)
         if "tactical_vest" in asset:
@@ -270,6 +281,8 @@ def habiller(ob, kind, asset_file, retouche, data_dir, nom):
             nor = prep_tex(mh["normalmapTexture"], tag + "_nor", min(size, 1024), None, True)
         rough = {"skin": 0.55, "eyes": 0.15, "eyebrows": 0.9, "hair": 0.8}.get(kind, rough_for(asset))
         mat = make_mat(os.path.basename(tag), diff, nor, rough, alpha=alpha)
+        if kind in ("skin", "clothes"):
+            A_CUIRE[ob] = (kind, diff, nor, None, tag)
     ob.data.materials.clear()
     ob.data.materials.append(mat)
 
@@ -332,7 +345,7 @@ def preparer_maillages(body, rig):
 COUVRANTS = ("pants", "jeans", "shirt", "tee", "polo", "boots", "sneakers", "shoes")
 
 
-def masquer_peau(body, meshes):
+def masquer_peau(body, meshes, garder_cou=False):
     """Supprime la peau entièrement cachée sous les pantalons, hauts et chaussures (évite qu'elle
     traverse le tissu pendant les animations)."""
     import bmesh
@@ -348,9 +361,17 @@ def masquer_peau(body, meshes):
             bm.free()
     mw = body.matrix_world
     hidden = []
+    z_cou = None
+    if garder_cou:   # la cagoule sera taillée dans cette peau jusque sous le col : on la garde ici
+        gi = body.vertex_groups.get("neck_01")
+        zs = [(mw @ v.co).z for v in body.data.vertices if gi and any(g.group == gi.index and g.weight > 0.5 for g in v.groups)]
+        z_cou = (min(zs) - 0.17) if zs else None
     for v in body.data.vertices:
         w = mw @ v.co
         cov = False
+        if z_cou is not None and w.z > z_cou and abs(w.x) < 0.08:
+            hidden.append(False)
+            continue
         for t in trees:
             loc, nor, _, dist = t.find_nearest(w, 0.04)
             if loc is not None and (w - loc).dot(nor) < 0.006:
@@ -400,13 +421,16 @@ def coquille(body, eyes, kind, mat, bones):
     tree = BVHTree.FromBMesh(src)
     neck = [bm.verts[i].co.z for i, g in enumerate(dom) if g == "neck_01"]
     neck_z = min(neck) if neck else 1.4
+    cou_y = sum(bm.verts[i].co.y for i, g in enumerate(dom) if g == "neck_01") / max(1, len(neck))
     kill = []
     for f in bm.faces:
         c = f.calc_center_median()
         n_ok = sum(1 for v in f.verts if dom[v.index] in ("head", "Head", "neck_01"))
         keep = n_ok >= 2
         if kind == "cagoule":
-            pass                      # fente des yeux découpée plus bas, à bords nets
+            # le bas de la cagoule descend sous le col du t-shirt (plus d'anneau de peau visible)
+            # (choix géométrique : tout le tour du cou jusqu'à 7 cm sous sa base, sans les épaules)
+            keep = keep or (c.z > neck_z - 0.17 and abs(c.x) < 0.075 and abs(c.y - cou_y) < 0.13)
         else:
             keep = keep and ezc - 0.005 > c.z > neck_z - 0.03
         if not keep:
@@ -422,9 +446,9 @@ def coquille(body, eyes, kind, mat, bones):
                 and exmin - 0.024 < f.calc_center_median().x < exmax + 0.024
                 and f.calc_center_median().y < eyc + 0.03]
         bmesh.ops.delete(bm, geom=slit, context="FACES")
-        g = bm.verts[:] + bm.edges[:] + bm.faces[:]   # bas du cou : bord net
-        bmesh.ops.bisect_plane(bm, geom=g, dist=0.0001, plane_co=Vector((0, eyc, neck_z - 0.01)),
-                               plane_no=Vector((0, -0.35, 1)).normalized(), clear_inner=True)
+        g = bm.verts[:] + bm.edges[:] + bm.faces[:]   # bas : bord net, rentré sous le col
+        bmesh.ops.bisect_plane(bm, geom=g, dist=0.0001, plane_co=Vector((0, cou_y, neck_z - 0.05)),
+                               plane_no=Vector((0, -1.6, 1)).normalized(), clear_inner=True)   # plus bas devant (encolure en V)
     if kind == "cachecou":
         # bord supérieur net, juste sous les yeux, un peu plus haut derrière la tête
         g = bm.verts[:] + bm.edges[:] + bm.faces[:]
@@ -440,7 +464,7 @@ def coquille(body, eyes, kind, mat, bones):
     for _ in range(6):
         bmesh.ops.smooth_vert(bm, verts=edge, factor=0.5, use_axis_x=False, use_axis_y=False, use_axis_z=True)
     inner = [v for v in bm.verts if not v.is_boundary]
-    it, fac, off = (3, 0.5, 0.0035) if kind == "cagoule" else (5, 0.5, 0.006)
+    it, fac, off = (1, 0.4, 0.0035) if kind == "cagoule" else (5, 0.5, 0.006)
     for _ in range(it):
         bmesh.ops.smooth_vert(bm, verts=inner, factor=fac, use_axis_x=True, use_axis_y=True, use_axis_z=True)
     # décollement : chaque sommet repoussé au moins à « off » au-dessus de la peau
@@ -448,8 +472,11 @@ def coquille(body, eyes, kind, mat, bones):
         loc, nor, _, _ = tree.find_nearest(v.co)
         if loc is not None:
             d = (v.co - loc).dot(nor)
-            if d < off:
-                v.co += nor * (off - d)
+            o = off
+            if kind == "cagoule" and v.co.z < neck_z + 0.01:     # partie rentrée sous le col : plaquée
+                o = 0.0018
+            if d < o:
+                v.co += nor * (o - d)
     bm.to_mesh(sh.data)
     bm.free()
     src.free()
@@ -465,7 +492,43 @@ def coquille(body, eyes, kind, mat, bones):
     for p in sh.data.polygons:
         p.use_smooth = True
     log(sh.name, len(sh.data.vertices), "sommets")
+    if kind == "cagoule":
+        # peau cachée sous la cagoule supprimée (sinon la gorge la traverse quand le cou se plie),
+        # sauf autour de la fente des yeux
+        cm = bmesh.new()
+        cm.from_mesh(sh.data)
+        cm.normal_update()
+        ct = BVHTree.FromBMesh(cm)
+        cm.free()
+        cache = []
+        for v in body.data.vertices:
+            loc, nor, _, dist = ct.find_nearest(v.co, 0.015)
+            oeil = v.co.y < eyc + 0.07 and abs(v.co.z - ezc) < 0.04
+            cache.append(loc is not None and not oeil)
+        bb = bmesh.new()
+        bb.from_mesh(body.data)
+        bb.verts.ensure_lookup_table()
+        kill = [f for f in bb.faces if all(cache[v.index] for v in f.verts)]
+        bmesh.ops.delete(bb, geom=kill, context="FACES")
+        bb.to_mesh(body.data)
+        bb.free()
+        log("peau sous la cagoule supprimée :", len(kill), "faces")
     return sh
+
+
+def reperes(body, eyes, bones):
+    """Hauteur et profondeur des yeux, du menton, du cou ; axes de la tête et du cou (repère monde)."""
+    ew = [eyes.matrix_world @ Vector(c) for c in eyes.bound_box]
+    ez = sum(v.z for v in ew) / 8.0
+    ey = sum(v.y for v in ew) / 8.0
+    dom = dominant_groups(body, bones)
+    mw = body.matrix_world
+    pts = [(mw @ v.co, dom[v.index]) for v in body.data.vertices]
+    menton = min((p.z for p, g in pts if g in ("head", "Head") and abs(p.x) < 0.012 and p.y < ey + 0.01 and p.z < ez - 0.05),
+                 default=ez - 0.12)
+    cou = [p for p, g in pts if g == "neck_01"]
+    return {"yeux_z": ez, "yeux_y": ey, "menton_z": menton, "cou_z": min(p.z for p in cou),
+            "tete_y": ey + 0.075, "cou_y": sum(p.y for p in cou) / len(cou)}
 
 
 # ---------------------------------------------------------------- squelette et animations
@@ -710,7 +773,7 @@ def construire(nom, spec, mpfb, data_dir):
     body, rig = creer_humain(spec, mpfb)
     log(nom, "corps MPFB créé :", body.name, rig.name)
     meshes = preparer_maillages(body, rig)
-    masquer_peau(body, meshes)
+    masquer_peau(body, meshes, garder_cou=bool(spec.get("couvre")) and spec["couvre"][0] == "cagoule")
 
     # matériaux
     habiller(body, "skin", spec["peau"][0], spec["peau"][1], data_dir, nom)
@@ -743,11 +806,40 @@ def construire(nom, spec, mpfb, data_dir):
         nor = prep_tex(os.path.join(TEX_PROJET, "cagoule_nor_gl.jpg"), os.path.join(nom, kind + "_nor"), 1024, None, True)
         mat = make_mat(kind, diff, nor, 0.95, scale=COQUILLE_ECHELLE, nor_strength=1.0)
         coquille(body, bpy.data.objects["Yeux"], kind, mat, {b.name for b in rig.data.bones})
+    if spec.get("masque"):
+        kind, coul = spec["masque"]
+        rep = reperes(body, bpy.data.objects["Yeux"], {b.name for b in rig.data.bones})
+        log("repères du visage", {k: round(v, 3) for k, v in rep.items()})
+        obst = [o for o in bpy.data.objects if o.type == "MESH" and o != body and
+                any(k in o.name.lower() for k in ("shirt", "tee", "polo", "vest", "cheveux"))]
+        mk, _ = vieillir_gardes.masque_tissu(kind, body, obst, rep, "Bandana" if kind == "bandana" else "Cache_cou")
+        mz = rep["menton_z"]
+        ref = (lambda p: Vector((p.x, p.y, max(p.z, mz + 0.012)))) if kind == "bandana" else None
+        vieillir_gardes.copier_poids(mk, body, ref)
+        A_CUIRE[mk] = ("clothes", None, None, coul, os.path.join(nom, kind))
+    if CUIRE:
+        t0 = time.time()
+        vieillir_gardes.preparer_cycles()
+        for ob, (kind, diff, nor, coul, tag) in A_CUIRE.items():
+            low = ob.name.lower()
+            if kind == "skin":
+                mat = vieillir_gardes.cuire_peau(ob, diff, TEX_TMP, tag + "_peau", 2048, rides=spec.get("rides", 0.5))
+            else:
+                grand = any(k in low for k in ("shirt", "tee", "polo", "jeans", "pants", "vest"))
+                haut = any(k in low for k in ("shirt", "tee", "polo"))
+                mat = vieillir_gardes.cuire_vetement(
+                    ob, diff, nor, TEX_TMP, tag + "_v", 2048 if grand else 1024, couleur=coul,
+                    salete=spec.get("salete", 1.0), sueur=1.0 if haut else 0.0)
+            ob.data.materials.clear()
+            ob.data.materials.append(mat)
+            log("cuit", ob.name, "%.0f s" % (time.time() - t0))
+        A_CUIRE.clear()
     meshes = [o for o in bpy.data.objects if o.type == "MESH"]
 
     # squelette Quaternius + animations
     q, acts = import_ual()
     hinge = hinge_axes(q, acts)
+    acts.update(retarget_cmu.creer_actions(q, acts, set_action))   # captures CMU + composites vivants
     C = correspondances(q, rig, hinge)
     n = construire_squelette(q, rig, C)
     new = bake_animations(q, n, acts)
@@ -798,7 +890,7 @@ def construire(nom, spec, mpfb, data_dir):
 
 
 def main():
-    argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+    argv = [a for a in (sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []) if not a.startswith("--")]
     noms = argv or list(GARDES)
     activer_mpfb()
     from bl_ext.user_default.mpfb.services import LocationService
