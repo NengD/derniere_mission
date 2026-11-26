@@ -121,6 +121,43 @@ func _tests_scene() -> void:
 	verifier(morts[0] == 1, "pas de deuxième mort")
 	verifier(Joueur.trouver_receveur(j2.forme) == j2, "receveur trouvé en remontant les parents")
 
+	print("== Arme à la première personne")
+	var j3: Joueur = (load("res://scenes/joueur/joueur.tscn") as PackedScene).instantiate()
+	j3.pilote_auto = true
+	j3.creer_effet = false
+	root.add_child(j3)
+	verifier(j3.glissiere != null and j3.chargeur_arme != null, "pistolet : glissière et chargeur séparés")
+	var repos := j3.glissiere.position
+	j3.arme.chambre = true
+	j3.arme.chargeur = 0
+	j3._appuyer_detente()
+	for i in 6:
+		j3._maj_glissiere(0.02)
+	verifier(j3.glissiere_bloquee and j3.glissiere.position.z > repos.z + 0.03, "dernière balle : glissière bloquée en arrière")
+	j3.arme.chambre = true
+	j3.arme.chargeur = 5
+	j3._liberer_glissiere()
+	for i in 6:
+		j3._maj_glissiere(0.02)
+	verifier(not j3.glissiere_bloquee and j3.glissiere.position.is_equal_approx(repos), "glissière relâchée : revient en avant")
+	j3._appuyer_detente()
+	j3._maj_glissiere(0.012)
+	var milieu := j3.glissiere.position.z
+	for i in 6:
+		j3._maj_glissiere(0.02)
+	verifier(milieu > repos.z + 0.01 and j3.glissiere.position.is_equal_approx(repos) and not j3.glissiere_bloquee, "tir : la glissière recule puis revient")
+	var t0 := j3._chargeur_dans_arme(0.0)
+	var t1 := j3._chargeur_dans_arme(0.05)
+	verifier((t1.origin - t0.origin).length() > 0.049 and (t1.origin - t0.origin).y < -0.04, "le chargeur sort vers le bas, le long de la poignée")
+	j3.arme.chambre = false
+	j3.arme.chargeur = 0
+	j3._recharger()
+	j3._rech_t = j3._rech_duree * 0.3
+	verifier(not j3._chargeur_engage_visible(), "rechargement à vide : pas de chargeur dans la poignée à mi-course")
+	j3._rech_t = j3._rech_duree * 0.9
+	verifier(j3._chargeur_engage_visible(), "rechargement à vide : nouveau chargeur engagé à la fin")
+	j3._rech_t = -1.0
+
 	print("%d tests, %d échec(s)" % [total, echecs])
 	# sons coupés et deux images d'attente : sortie sans flux audio encore en lecture
 	for n in root.find_children("*", "", true, false):
@@ -128,6 +165,7 @@ func _tests_scene() -> void:
 			n.stop()
 	j.free()
 	j2.free()
+	j3.free()
 	await process_frame
 	await process_frame
 	quit(1 if echecs > 0 else 0)

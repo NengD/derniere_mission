@@ -24,6 +24,15 @@ var _flash := 0.0
 var _sang := 0.0
 var _blessure := 0.0
 var _motion := Vector2.ZERO
+## petites saccades d'image (images répétées, comme une caméra qui perd des images) ;
+## coupées par l'option « mal des transports » et dosées par « effet_camera »
+var saccades := true
+var _saccades_ok := true
+var _intensite := 1.0
+var _proch_saccade := 3.0
+var _gel := 0
+var _rng := RandomNumberGenerator.new()
+var _image := 0
 
 
 func _ready() -> void:
@@ -36,14 +45,8 @@ func _ready() -> void:
 	post.shader = load("res://shaders/camera_pieton.gdshader")
 	_ecran.material = post
 	add_child(_ecran)
-	# étalonnage de la direction A (photoréaliste sombre)
-	post.set_shader_parameter("contrast", 1.06)
-	post.set_shader_parameter("saturation", 0.72)
-	post.set_shader_parameter("chroma", 0.003)
-	post.set_shader_parameter("grain", 0.06)
-	post.set_shader_parameter("vignette", 0.85)
-	post.set_shader_parameter("split_tone", 0.2)
-	post.set_shader_parameter("black_lift", 0.014)
+	# l'étalonnage (direction A, réglé d'après des images de vraies caméras-piétons et
+	# de Better Than Dead / Unrecord) est dans les valeurs par défaut du shader
 
 	_point_rec = ColorRect.new()
 	_point_rec.color = Color(0.95, 0.08, 0.05)
@@ -120,17 +123,22 @@ func _reglage(cle: String, defaut):
 
 
 func appliquer_reglages() -> void:
-	post.set_shader_parameter("intensity", float(_reglage("effet_camera", 1.0)))
+	_intensite = float(_reglage("effet_camera", 1.0))
+	post.set_shader_parameter("intensity", _intensite)
 	var mal: bool = _reglage("mal_des_transports", false)
-	post.set_shader_parameter("distortion", 0.0 if mal else 0.24)
-	post.set_shader_parameter("zoom_fit", 1.0 if mal else 0.76)
-	post.set_shader_parameter("motion_blur", 0.25 if mal else 0.6)
+	_saccades_ok = not mal
+	post.set_shader_parameter("distortion", 0.0 if mal else 0.42)
+	post.set_shader_parameter("zoom_fit", 1.0 if mal else 0.72)
+	post.set_shader_parameter("motion_blur", 0.25 if mal else 0.7)
 	_munitions.visible = bool(_reglage("afficher_munitions", false))
 	_viseur.visible = bool(_reglage("afficher_point", false))
 
 
 func _process(delta: float) -> void:
 	_t += delta
+	_image += 1
+	post.set_shader_parameter("frame_seed", float(_image % 9973))
+	_saccade(delta)
 	_maj_rec()
 	_flash = max(0.0, _flash - delta * 2.5)
 	post.set_shader_parameter("flash", _flash)
@@ -141,6 +149,27 @@ func _process(delta: float) -> void:
 		_sous_titre_reste -= delta
 		if _sous_titre_reste <= 0.0:
 			_sous_titre.visible = false
+
+
+## Image répétée : on suspend le dessin 1 à 3 images (le jeu continue), l'écran garde la
+## dernière image puis « saute » — plus fréquent quand la caméra bouge vite.
+func _saccade(delta: float) -> void:
+	if _gel > 0:
+		_gel -= 1
+		if _gel == 0:
+			RenderingServer.render_loop_enabled = true
+		return
+	if not (saccades and _saccades_ok) or _intensite <= 0.05:
+		return
+	_proch_saccade -= delta * (1.0 + clamp(_motion.length() * 4.0, 0.0, 4.0))
+	if _proch_saccade <= 0.0:
+		_proch_saccade = _rng.randf_range(2.0, 7.0) / _intensite
+		_gel = _rng.randi_range(1, 2 if _intensite < 0.6 else 3)
+		RenderingServer.render_loop_enabled = false
+
+
+func _exit_tree() -> void:
+	RenderingServer.render_loop_enabled = true
 
 
 func _maj_rec() -> void:

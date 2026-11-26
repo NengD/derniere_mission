@@ -3,8 +3,11 @@ extends Node3D
 ##
 ## Sans argument : jeu réel (clic = capturer la souris, Échap = la libérer).
 ## Arguments (après « -- ») :
-##   photo <fichier.png> [jeu|visee|tir|pieds|penche|recharge|blesse|plan|mains]
+##   photo <fichier.png> [jeu|visee|tir|lampe|pieds|penche|recharge|blesse|plan|mains]
 ##   video   (avec --write-movie x.avi --fixed-fps 30) : scénario scripté puis quitte
+##   video court : les 10,5 premières secondes seulement
+##   perf [0|1|2]  même scénario en temps réel, vsync coupée : i/s moyenne et 1 % bas dans logs/perf.txt
+##   video_bras (avec --write-movie) : 9,6 s de bras et d'arme (marche, 4 tirs, culasse ouverte, rechargement à vide)
 ## En photo et vidéo, aucune entrée réelle n'est lue et la souris n'est jamais capturée.
 
 const PH := "res://assets/decor/"
@@ -22,7 +25,8 @@ var cibles: Array[Node3D] = []
 var t := 0.0
 var _faits := {}
 var _cam_ext: Camera3D
-var _clignote: Array = []
+var rendu: RenduNiveau
+var _perf: MesurePerf
 
 
 func _ready() -> void:
@@ -34,10 +38,18 @@ func _ready() -> void:
 		sortie = a[1]
 	if a.size() > 2:
 		vue = a[2]
+	if mode == "perf":
+		# mesure en temps réel : même parcours que la vidéo, qualité imposée sans l'enregistrer
+		if sortie != "" and has_node("/root/Reglages"):
+			get_node("/root/Reglages").valeurs["qualite"] = int(sortie)
+		_perf = MesurePerf.new()
+		_perf.etiquette = "salle_test parcours video"
+		add_child(_perf)
 	_environnement()
 	_couloir()
 	_objets()
 	_lumieres()
+	rendu.cuire_gi(self)
 	_cibles()
 	joueur = (load("res://scenes/joueur/joueur.tscn") as PackedScene).instantiate()
 	joueur.pilote_auto = mode != "jeu"
@@ -45,6 +57,8 @@ func _ready() -> void:
 	joueur.global_position = Vector3(-0.3, 0.05, 0.8)
 	joueur.bus_reverb = "Rev_Couloir"
 	joueur.mort.connect(func() -> void: print("JOUEUR MORT"))
+	# pas de saccades d'image en photo (la capture attend une image dessinée)
+	joueur.effet.saccades = mode != "photo" and mode != "perf"
 	if mode == "jeu":
 		joueur.effet.sous_titre(tr("TEST_AIDE"), 6.0)
 	if mode == "photo" and (vue == "plan" or vue == "mains"):
@@ -95,31 +109,11 @@ func _boite(taille: Vector3, pos: Vector3, m: Material, materiau := "beton") -> 
 
 
 func _environnement() -> void:
-	var we := WorldEnvironment.new()
-	var e := Environment.new()
-	e.background_mode = Environment.BG_COLOR
-	e.background_color = Color.BLACK
-	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	e.ambient_light_color = Color(0.5, 0.55, 0.6)
-	e.ambient_light_energy = 0.045
-	e.tonemap_mode = Environment.TONE_MAPPER_AGX
-	e.tonemap_white = 6.0
-	e.ssao_enabled = true
-	e.ssao_radius = 1.2
-	e.ssao_intensity = 2.5
-	e.ssil_enabled = true
-	e.ssil_intensity = 1.2
-	e.glow_enabled = true
-	e.glow_intensity = 0.6
-	e.glow_bloom = 0.04
-	e.glow_hdr_threshold = 1.2
-	e.volumetric_fog_enabled = true
-	e.volumetric_fog_density = 0.03
-	e.volumetric_fog_anisotropy = 0.6
-	e.volumetric_fog_length = 40.0
-	e.volumetric_fog_gi_inject = 0.5
-	we.environment = e
-	add_child(we)
+	# environnement, exposition automatique, poussière et qualité : réutilisables (scripts/rendu/)
+	rendu = RenduNiveau.new()
+	rendu.name = "Rendu"
+	rendu.zone = AABB(Vector3(-W / 2, 0, Z1), Vector3(W, H, Z0 - Z1))
+	add_child(rendu)
 
 
 func _couloir() -> void:
@@ -223,41 +217,39 @@ func _ramassable(type: String, pos: Vector3) -> void:
 
 
 func _lumieres() -> void:
-	var zs := [0.0, -4.0, -8.0, -12.0, -16.0]
-	for i in zs.size():
-		var z: float = zs[i]
-		_modele("mounted_fluorescent_lights", Vector3(0, H - 0.02, z), 90, "mounted_fluorescent_lights_a", false)
-		if i == 3:
-			continue   # rampe grillée : zone d'ombre
-		var s := SpotLight3D.new()
-		s.position = Vector3(0, H - 0.12, z)
-		s.rotation_degrees = Vector3(-90, 0, 0)
-		s.spot_angle = 78
-		s.spot_attenuation = 0.8
-		s.spot_range = 7.5
-		s.light_energy = 2.2
-		s.light_color = Color(0.86, 0.95, 1.0)
-		s.shadow_enabled = true
-		s.shadow_blur = 1.5
-		s.light_volumetric_fog_energy = 0.6
-		add_child(s)
-		var o := OmniLight3D.new()
-		o.position = Vector3(0, H - 0.3, z)
-		o.omni_range = 3.0
-		o.light_energy = 0.25
-		o.light_color = s.light_color
-		add_child(o)
-		if i == 2:
-			_clignote = [s, o]
+	# néons au plafond : un normal près du départ, un qui grésille, un mort qui tente de s'amorcer ;
+	# entre eux, des zones presque noires (poteau, caisses)
+	_lampe("neon", Vector3(0, H - 0.02, 0.0), "aucune")
+	_lampe("neon", Vector3(0, H - 0.02, -4.0), "gresille")
+	_lampe("neon", Vector3(0, H - 0.02, -16.0), "morte")
+	# ampoule nue pendue au-dessus du deuxième mannequin
+	_lampe("ampoule", Vector3(-0.3, H, -12.0))
+	# lampes de sécurité : rouge sur le mur gauche, verte au-dessus du rideau métallique
+	var r := _lampe("securite_rouge", Vector3(-W / 2 + 0.02, 2.3, -9.6))
+	r.rotation_degrees.y = -90
+	var v := _lampe("securite_verte", Vector3(W / 2 - 0.6, H - 0.35, Z1 + 0.02))
+	v.rotation_degrees.y = 180
+	# sodium de la rue qui filtre sous le rideau métallique
 	var ext := SpotLight3D.new()
-	ext.position = Vector3(0, 0.3, Z1 + 0.3)
-	ext.rotation_degrees = Vector3(-8, 0, 0)
-	ext.spot_angle = 60
-	ext.spot_range = 9
-	ext.light_energy = 3.0
-	ext.light_color = Color(1.0, 0.78, 0.55)
-	ext.light_volumetric_fog_energy = 2.0
+	ext.position = Vector3(0, 0.25, Z1 + 0.25)
+	ext.rotation_degrees = Vector3(-6, 0, 0)
+	ext.spot_angle = 65
+	ext.spot_range = 10
+	ext.light_energy = 2.5
+	ext.light_color = Color(1.0, 0.55, 0.18)
+	ext.light_volumetric_fog_energy = 3.0
+	ext.shadow_enabled = true
 	add_child(ext)
+
+
+func _lampe(type: String, pos: Vector3, panne := "aucune") -> Lampe:
+	var l := Lampe.new()
+	l.type = type
+	l.panne = panne
+	l.position = pos
+	l.graine = int(pos.z * 100.0) + 7
+	add_child(l)
+	return l
 
 
 func _cibles() -> void:
@@ -284,21 +276,20 @@ func _unhandled_input(ev: InputEvent) -> void:
 
 # ---------------------------------------------------------------- scénarios
 
-func _process(_delta: float) -> void:
-	for l in _clignote:
-		var base := 2.2 if l is SpotLight3D else 0.25
-		var f := 1.0 if fmod(t * 7.3, 3.1) > 0.35 else (0.05 if fmod(t * 41.0, 1.0) > 0.5 else 0.6)
-		(l as Light3D).light_energy = base * f
-
-
 func _physics_process(delta: float) -> void:
 	t += delta
-	if mode == "video":
+	if mode == "video" or mode == "perf":
 		_video()
-		if t >= DUREE_VIDEO and _une_fois("fin"):
+		if t >= (10.5 if sortie == "court" else DUREE_VIDEO) and _une_fois("fin"):
+			if _perf:
+				_perf.ecrire()
 			_quitter()
 	elif mode == "photo":
 		_photo()
+	elif mode == "video_bras":
+		_video_bras()
+		if t >= 9.6 and _une_fois("fin"):
+			_quitter()
 
 
 func _une_fois(cle: String) -> bool:
@@ -385,6 +376,36 @@ func _video() -> void:
 		j.recevoir_tir(35.0, "", j.global_position + Vector3(0, 1.2, 0), Vector3.ZERO, j.global_basis * Vector3(-0.3, 0, 1), null)
 
 
+## Vidéo courte des bras et de l'arme (9,6 s) : marche, visée, quatre tirs jusqu'à la culasse ouverte,
+## rechargement à vide, reprise de la visée en avançant.
+func _video_bras() -> void:
+	var j := joueur
+	j.auto_axes = Vector2.ZERO
+	j.auto_tenu.clear()
+	if t < 0.05:
+		j.global_position = Vector3(-0.2, 0.05, 0.6)
+	if _entre(0.3, 2.6):
+		j.auto_axes = Vector2(0, 1)
+		_regarder(6.0 if t < 1.5 else -4.0, -5.0, 0.5)
+	if t >= 2.4 and _une_fois("munitions"):
+		j.arme.chambre = true
+		j.arme.chargeur = 3
+	if _entre(2.6, 5.0):
+		j.auto_tenu["viser"] = true
+		_viser_vers(_torse(0), 1.6)
+		for s in [3.3, 3.75, 4.2, 4.65]:
+			if t >= s and _une_fois("tir%s" % s):
+				j.auto_appui["tirer"] = true
+	if t >= 5.1 and _une_fois("recharge"):
+		j.auto_appui["recharger"] = true
+	if _entre(5.1, 7.6):
+		_regarder(rad_to_deg(j.lacet), -9.0, 0.4)
+	if _entre(7.6, 9.6):
+		j.auto_tenu["viser"] = true
+		j.auto_axes = Vector2(0, 0.5)
+		_viser_vers(_torse(1), 1.2)
+
+
 var _gizmos: Array = []
 
 
@@ -443,6 +464,11 @@ func _photo() -> void:
 			fin = 1.4
 		"pieds":
 			_regarder(10.0, -65.0, 6.0)
+		"lampe":
+			# sous le néon qui grésille, regard vers l'ampoule nue et la lampe rouge (surexposition)
+			if t < 0.05:
+				j.global_position = Vector3(0.4, 0.05, -7.0)
+			_viser_vers(Vector3(-0.6, H - 0.7, -12.0), 4.0)
 		"penche":
 			j.auto_tenu["pencher_droite"] = true
 			_viser_vers(_torse(0), 4.0)
@@ -452,7 +478,7 @@ func _photo() -> void:
 				j.arme.chambre = false
 				j.arme.chargeur = 0
 				j.auto_appui["recharger"] = true
-			fin = 0.5 + 2.4 * 0.45
+			fin = 0.5 + 2.4 * (float(OS.get_environment("RECH_U")) if OS.has_environment("RECH_U") else 0.45)
 		"blesse":
 			_viser_vers(_torse(0), 4.0)
 			if t >= 0.6 and _une_fois("b1"):

@@ -6,7 +6,7 @@ Sortie : assets/characters/<nom>.glb (squelette, maillages, animations en pistes
 
 - garde : membre du cartel, cagoule (seule une fente pour les yeux), t-shirt olive, gilet de toile,
           jean sombre, rangers ; mains nues.
-- marc  : corps du joueur vu par la caméra-piéton (veste sombre, gants), tête retirée.
+- marc  : ancien corps du joueur (remplacé par tools/blender/build_marc_mpfb.py : ne plus utiliser « marc » ici).
 """
 import bpy
 import bmesh

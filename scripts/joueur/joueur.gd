@@ -91,6 +91,12 @@ var capsule: CapsuleShape3D
 var lumiere_tir: OmniLight3D
 var sprite_tir: Sprite3D
 var chargeur_visuel: MeshInstance3D
+var glissiere: Node3D                  # pièce mobile du glb (recule au tir, bloquée en arrière à vide)
+var chargeur_arme: Node3D              # chargeur engagé (pièce du glb)
+var glissiere_bloquee := false
+var _glissiere_repos := Transform3D.IDENTITY
+var _chargeur_repos := Transform3D.IDENTITY
+var _glissiere_t := 9.0                # temps depuis le dernier départ du coup
 var _fumees: Array[GPUParticles3D] = []
 var _fumee_i := 0
 
@@ -100,6 +106,7 @@ var _rng := RandomNumberGenerator.new()
 var _recul := Vector2.ZERO
 var _recul_cible := Vector2.ZERO
 var _coup_arme := 0.0
+var _recul_lateral := 0.0              # sens du recul de ce coup (-1..1)
 var _secousse := 0.0
 var _coup_tete := Vector2.ZERO
 var _balance := Vector2.ZERO
@@ -180,11 +187,17 @@ func _construire() -> void:
 	camera.add_child(porte_arme)
 	pistolet = (load("res://assets/weapons/pistolet.glb") as PackedScene).instantiate()
 	porte_arme.add_child(pistolet)
+	glissiere = pistolet.find_child("glissiere", true, false)
+	chargeur_arme = pistolet.find_child("chargeur", true, false)
+	if glissiere:
+		_glissiere_repos = glissiere.transform
+	if chargeur_arme:
+		_chargeur_repos = chargeur_arme.transform
 	bouche = Marker3D.new()
-	bouche.position = Vector3(0, 0.072, -0.168)
+	bouche.position = Vector3(0, 0.072, -0.152)
 	pistolet.add_child(bouche)
 	ejection = Marker3D.new()
-	ejection.position = Vector3(0.016, 0.084, -0.07)
+	ejection.position = Vector3(0.009, 0.082, -0.056)
 	pistolet.add_child(ejection)
 	_construire_effets_arme()
 
@@ -223,10 +236,30 @@ func _construire_corps() -> void:
 		if corps_anim.has_animation(n):
 			corps_anim.get_animation(n).loop_mode = Animation.LOOP_LINEAR
 	_jouer_corps("Pistol_Idle", 1.0)
+	_regler_tissus(corps)
 	var sk: Skeleton3D = corps.find_children("*", "Skeleton3D", true, false)[0]
 	bras = BrasIK.new()
 	bras.name = "BrasIK"
 	sk.add_child(bras)
+
+
+## Tissus : reflet spéculaire réduit (un tissu mat ne brille pas en lumière rasante), cuir un peu plus vif.
+func _regler_tissus(n: Node) -> void:
+	for mi in n.find_children("*", "MeshInstance3D", true, false):
+		var m := (mi as MeshInstance3D).get_active_material(0) as BaseMaterial3D
+		if m == null:
+			continue
+		m = m.duplicate()
+		match String(mi.name):
+			"Veste":
+				m.metallic_specular = 0.12
+				m.roughness = 1.0
+			"Gants":
+				m.metallic_specular = 0.1
+				m.cull_mode = BaseMaterial3D.CULL_BACK
+			_:
+				m.metallic_specular = 0.3
+		(mi as MeshInstance3D).material_override = m
 
 
 func _construire_effets_arme() -> void:
@@ -240,7 +273,7 @@ func _construire_effets_arme() -> void:
 	sprite_tir = Sprite3D.new()
 	sprite_tir.texture = load("res://assets/fx/flash_canon.png")
 	sprite_tir.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	sprite_tir.pixel_size = 0.00055
+	sprite_tir.pixel_size = 0.00034
 	sprite_tir.shaded = false
 	sprite_tir.modulate = Color(1, 0.9, 0.72, 1)
 	sprite_tir.position = Vector3(0, 0, -0.06)
@@ -251,15 +284,14 @@ func _construire_effets_arme() -> void:
 		var p := _particules_fumee()
 		add_child(p)
 		_fumees.append(p)
-	# chargeur visible pendant le rechargement (le modèle a le sien soudé)
+	# chargeur hors de l'arme pendant le rechargement (copie de la pièce du glb)
 	chargeur_visuel = MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = Vector3(0.026, 0.115, 0.033)
-	chargeur_visuel.mesh = bm
-	var m := StandardMaterial3D.new()
-	m.albedo_color = Color(0.03, 0.03, 0.032)
-	m.roughness = 0.6
-	chargeur_visuel.material_override = m
+	if chargeur_arme is MeshInstance3D:
+		chargeur_visuel.mesh = (chargeur_arme as MeshInstance3D).mesh
+	else:
+		var bm := BoxMesh.new()
+		bm.size = Vector3(0.022, 0.115, 0.032)
+		chargeur_visuel.mesh = bm
 	chargeur_visuel.visible = false
 	add_child(chargeur_visuel)
 	chargeur_visuel.top_level = true
@@ -606,6 +638,7 @@ func _tir() -> void:
 	var k: float = lerp(2.4, 1.7, visee_t) * (0.8 if accroupi_t > 0.5 else 1.0)
 	_recul_cible += Vector2(k, _rng.randf_range(-0.7, 0.7))
 	_coup_arme = 1.0
+	_recul_lateral = _rng.randf_range(-1.0, 1.0)
 	_secousse = max(_secousse, 0.35)
 	lumiere_tir.light_energy = 7.0
 	sprite_tir.visible = true
@@ -617,7 +650,12 @@ func _tir() -> void:
 	_fumee_i = (_fumee_i + 1) % _fumees.size()
 	f.global_transform = bouche.global_transform
 	f.restart()
-	_douille(false)
+	_glissiere_t = 0.0
+	# chambre vide après le coup : la glissière reste ouverte (arrêtoir) ; enrayage : à moitié ouverte
+	glissiere_bloquee = not arme.chambre
+	get_tree().create_timer(0.012, false).timeout.connect(func() -> void:
+		if is_instance_valid(self):
+			_douille(false))
 
 
 ## Remonte les parents (4 niveaux) pour trouver qui reçoit le tir.
@@ -704,7 +742,7 @@ func _douille(cartouche: bool) -> void:
 	_monde().add_child(rb)
 	var b := ejection.global_basis.orthonormalized()
 	rb.global_transform = Transform3D(b * Basis(Vector3.RIGHT, PI / 2), ejection.global_position)
-	rb.linear_velocity = velocity + b.x * _rng.randf_range(1.6, 2.5) + b.y * _rng.randf_range(1.0, 1.7) + b.z * _rng.randf_range(0.1, 0.5)
+	rb.linear_velocity = velocity + b.x * _rng.randf_range(2.2, 3.2) + b.y * _rng.randf_range(1.4, 2.2) + b.z * _rng.randf_range(0.3, 0.8)
 	rb.angular_velocity = Vector3(_rng.randf_range(-25, 25), _rng.randf_range(-25, 25), _rng.randf_range(-25, 25))
 	var deja := [false]
 	rb.body_entered.connect(func(_b: Node) -> void:
@@ -735,6 +773,7 @@ func _recharger() -> void:
 				[D * 0.15, func() -> void: _jouer(_son("chargeur_entree"), -6.0, 1.1)],
 				[D * 0.45, func() -> void:
 					_jouer(_son("culasse"), -3.0)
+					_liberer_glissiere()
 					_douille(true)],
 			]
 		"recharger_vide":
@@ -743,7 +782,9 @@ func _recharger() -> void:
 					_jouer(_son("chargeur_sortie"), -4.0)
 					_chargeur_tombe()],
 				[D * 0.58, func() -> void: _jouer(_son("chargeur_entree"), -3.0)],
-				[D * 0.8, func() -> void: _jouer(_son("culasse"), -2.0)],
+				[D * 0.8, func() -> void:
+					_jouer(_son("culasse"), -2.0)
+					_liberer_glissiere()],
 			]
 		_:
 			_rech_evts = [
@@ -759,12 +800,12 @@ func _chargeur_tombe() -> void:
 	rb.mass = 0.1
 	var mi := MeshInstance3D.new()
 	mi.mesh = chargeur_visuel.mesh
-	mi.material_override = chargeur_visuel.material_override
 	rb.add_child(mi)
 	var cs := CollisionShape3D.new()
 	var bs := BoxShape3D.new()
-	bs.size = (chargeur_visuel.mesh as BoxMesh).size
+	bs.size = Vector3(0.024, 0.118, 0.034)
 	cs.shape = bs
+	cs.position = Vector3(0, -0.055, 0)
 	rb.add_child(cs)
 	_monde().add_child(rb)
 	rb.global_transform = pistolet.global_transform * _chargeur_dans_arme(0.06)
@@ -773,10 +814,10 @@ func _chargeur_tombe() -> void:
 	_douilles.append(rb)
 
 
-## Position du chargeur dans le repère de l'arme ; `sortie` = de combien il dépasse vers le bas.
+## Position du chargeur dans le repère de l'arme ; `sortie` = de combien il dépasse vers le bas
+## (le long de la poignée : axe -Y du chargeur).
 func _chargeur_dans_arme(sortie: float) -> Transform3D:
-	var b := Basis(Vector3.RIGHT, deg_to_rad(18))
-	return Transform3D(b, b * Vector3(0, -0.02 - sortie, 0))
+	return _chargeur_repos * Transform3D(Basis.IDENTITY, Vector3(0, -sortie, 0))
 
 
 func ramasser_chargeur(nb: int) -> void:
@@ -1011,7 +1052,10 @@ func _process(delta: float) -> void:
 	recul_n.rotation_degrees = Vector3(_recul.x + _coup_tete.x + sx + r_bob.x, _recul.y + _coup_tete.y + sy + r_bob.y, sx * 0.6 + sin(_phase_pas) * 0.5 * amp)
 
 	_pose_arme(delta, v)
+	_maj_glissiere(delta)
 	_maj_corps(delta, v)
+	if chargeur_arme:
+		chargeur_arme.visible = _chargeur_engage_visible()
 	_maj_effet(delta)
 
 	# flash de bouche : une image
@@ -1020,10 +1064,15 @@ func _process(delta: float) -> void:
 		sprite_tir.visible = false
 
 
+## Arme tenue bras tendus devant la poitrine (caméra-piéton) : visée = organes de visée sur l'axe.
+const VISEE := Vector3(0.0, -0.097, -0.41)
+const HANCHE := Vector3(0.06, -0.20, -0.385)
+
+
 ## Pose procédurale de l'arme dans le repère de la caméra.
 func _pose_arme(delta: float, v: float) -> void:
-	var hanche := Transform3D(Basis.from_euler(Vector3(deg_to_rad(1.5), deg_to_rad(2.5), deg_to_rad(-3.0))), Vector3(0.11, -0.175, -0.38))
-	var visee := Transform3D(Basis.IDENTITY, Vector3(0.0, -0.0985, -0.385))
+	var hanche := Transform3D(Basis.from_euler(Vector3(deg_to_rad(2.0), deg_to_rad(1.5), deg_to_rad(-2.0))), HANCHE)
+	var visee := Transform3D(Basis.IDENTITY, VISEE)
 	var basse := Transform3D(Basis.from_euler(Vector3(deg_to_rad(-38), deg_to_rad(18), deg_to_rad(12))), Vector3(0.09, -0.30, -0.30))
 	var t := hanche.interpolate_with(visee, _lisse(visee_t))
 	var bas: float = max(course_t, _mur_t, 1.0 if _soin_t >= 0.0 else 0.0)
@@ -1046,17 +1095,77 @@ func _pose_arme(delta: float, v: float) -> void:
 	# balancement (inertie de la souris), marche, respiration
 	_balance_cible = _balance_cible.limit_length(6.0).lerp(Vector2.ZERO, 1.0 - exp(-9.0 * delta))
 	_balance = _balance.lerp(_balance_cible, 1.0 - exp(-14.0 * delta))
-	var amp: float = clamp(v / COURSE, 0.0, 1.0) * lerp(1.0, 0.35, visee_t)
-	var respire: float = sin(_t * 1.6) * (0.0015 + essoufflement * 0.004) * lerp(1.0, 0.5, visee_t)
-	t.origin += Vector3(sin(_phase_pas) * 0.012 * amp, -abs(cos(_phase_pas)) * 0.012 * amp + respire, 0)
-	t.basis = Basis.from_euler(Vector3(deg_to_rad(_balance.y * 0.6), deg_to_rad(_balance.x * 0.6), deg_to_rad(_balance.x * 0.8))) * t.basis
+	# marche : huit couché synchronisé sur les pas (l'arme suit les épaules), plus ample en courant
+	var amp: float = clamp(v / COURSE, 0.0, 1.0) * lerp(1.0, 0.45, visee_t) * (1.0 + course_t * 0.8)
+	var ph := _phase_pas
+	t.origin += Vector3(sin(ph) * 0.016, -abs(cos(ph)) * 0.016 + 0.006, sin(ph * 2.0) * 0.004) * amp
+	t.basis = Basis.from_euler(Vector3(deg_to_rad(-abs(cos(ph)) * 1.6 * amp), deg_to_rad(sin(ph) * 1.4 * amp), deg_to_rad(sin(ph) * 2.2 * amp))) * t.basis
+	# respiration : montée-descente lente et léger tangage, plus forts essoufflé ; micro-tremblement des bras tendus
+	var resp_a: float = (0.0018 + essoufflement * 0.005) * lerp(1.0, 0.6, visee_t)
+	var respire: float = sin(_t * 1.6) * resp_a
+	var tremble := Vector2(sin(_t * 7.3) + sin(_t * 11.9) * 0.5, sin(_t * 6.1 + 1.0) + sin(_t * 13.7) * 0.4) * (0.08 + essoufflement * 0.25)
+	t.origin += Vector3(0, respire, 0)
+	t.basis = Basis.from_euler(Vector3(deg_to_rad(_balance.y * 0.6 + respire * 120.0 + tremble.y), deg_to_rad(_balance.x * 0.6 + tremble.x), deg_to_rad(_balance.x * 0.8))) * t.basis
 
-	# coup de recul de l'arme
-	_coup_arme = max(0.0, _coup_arme - delta * 7.0)
+	# coup de recul : l'arme part en arrière et se relève d'un coup (relèvement), puis revient en
+	# douceur avec un léger dépassement (les bras ramènent l'arme sur la cible)
+	_coup_arme = max(0.0, _coup_arme - delta * 6.0)
 	var c := _coup_arme * _coup_arme
-	t.origin += Vector3(0, 0.01, 0.045) * c * lerp(1.0, 0.7, visee_t)
-	t.basis = t.basis * Basis(Vector3.RIGHT, deg_to_rad(9.0 * c))
+	var retour := sin((1.0 - _coup_arme) * PI) * _coup_arme * 0.6   # petit rebond sous la ligne de visée
+	var force: float = lerp(1.0, 0.75, visee_t)
+	t.origin += Vector3(_recul_lateral * c * 0.01, 0.018 * c - 0.004 * retour, 0.06 * c) * force
+	t.basis = t.basis * Basis.from_euler(Vector3(deg_to_rad((16.0 * c - 2.5 * retour) * force), deg_to_rad(_recul_lateral * 2.0 * c), deg_to_rad(-_recul_lateral * 3.0 * c)))
 	porte_arme.transform = t
+
+
+const COURSE_GLISSIERE := 0.034
+
+
+## La glissière revient en avant (relâchée par la main gauche ou par l'arrêtoir).
+func _liberer_glissiere() -> void:
+	glissiere_bloquee = false
+	_glissiere_t = 0.03
+
+
+## Glissière : cycle de tir (recule en 18 ms, revient en 45 ms), bloquée ouverte à vide,
+## entrouverte si enrayée, tirée par la main gauche pendant le rechargement.
+func _maj_glissiere(delta: float) -> void:
+	if glissiere == null:
+		return
+	_glissiere_t += delta
+	var t := _glissiere_t
+	var k := 0.0
+	if t < 0.018:
+		k = t / 0.018
+	elif t < 0.03:
+		k = 1.0
+	elif t < 0.075:
+		k = 1.0 - _lisse((t - 0.03) / 0.045)
+	if glissiere_bloquee and t >= 0.018:
+		k = 0.4 if arme.enrayee else 1.0
+	if _rech_t >= 0.0:
+		var u: float = clamp(_rech_t / _rech_duree, 0.0, 1.0)
+		match _rech_action:
+			"recharger_vide":
+				if u >= 0.7 and u < 0.8:
+					k = 1.0 + 0.06 * sin((u - 0.7) / 0.1 * PI)
+			"desenrayer":
+				if u >= 0.32 and u < 0.45:
+					k = max(k, _lisse((u - 0.32) / 0.1))
+	glissiere.transform = _glissiere_repos * Transform3D(Basis.IDENTITY, Vector3(0, 0, COURSE_GLISSIERE * k))
+
+
+## Chargeur engagé visible dans la poignée ? (caché pendant qu'il est dans la main ou absent)
+func _chargeur_engage_visible() -> bool:
+	if _rech_t < 0.0:
+		return true
+	var u: float = clamp(_rech_t / _rech_duree, 0.0, 1.0)
+	match _rech_action:
+		"recharger_vide":
+			return u < 0.1 or u >= 0.6
+		"recharger":
+			return u >= 0.7
+	return true
 
 
 func _rech_reperes() -> Array:
@@ -1079,7 +1188,7 @@ static func main_droite() -> Transform3D:
 	var y := Vector3(-0.04, -0.25, -1.0).normalized()
 	var x := Vector3(0.98, 0.15, 0.0)
 	x = (x - y * x.dot(y)).normalized()
-	return Transform3D(Basis(x, y, x.cross(y)), Vector3(0.024, -0.002, 0.088))
+	return Transform3D(Basis(x, y, x.cross(y)), Vector3(0.024, 0.035, 0.088))
 
 
 ## main gauche (soutien) : X = paume, Y = vers les doigts, Z = pouce
@@ -1087,7 +1196,7 @@ static func main_gauche() -> Transform3D:
 	var y := Vector3(0.3, -0.32, -0.9).normalized()
 	var x := Vector3(0.94, 0.15, 0.3)
 	x = (x - y * x.dot(y)).normalized()
-	return Transform3D(Basis(x, y, x.cross(y)), Vector3(-0.05, -0.032, 0.05))
+	return Transform3D(Basis(x, y, x.cross(y)), Vector3(-0.048, 0.004, 0.055))
 
 
 ## Chargeur tenu dans la main gauche (repère de la main : X paume, Y doigts, Z pouce) :
@@ -1163,12 +1272,12 @@ func _maj_corps(delta: float, v: float) -> void:
 	# corps recalé à l'horizontale pour que le milieu des épaules soit juste sous et derrière les yeux
 	# (quelle que soit l'animation des jambes, le penché ou le buste plié)
 	if bras.epaules_valides:
-		var voulu := tete.global_position + global_basis * Vector3(0, -0.09, 0.03)
+		var voulu := tete.global_position + global_basis * Vector3(0, -0.17, 0.04)
 		var ecart := global_basis.inverse() * (voulu - bras.epaules)
 		var pos := corps.position + ecart * (1.0 - exp(-20.0 * delta))
 		pos.x = clamp(pos.x, -0.5, 0.5)
 		pos.z = clamp(pos.z, -0.5, 0.6)
-		pos.y = clamp(pos.y, -0.35, 0.0)   # épaules trop hautes (accroupi) : on descend le corps
+		pos.y = clamp(pos.y, -0.35, 0.15)  # épaules trop hautes (accroupi) : on descend le corps ; trop basses : on le remonte
 		corps.position = pos
 	# jambes
 	var nom := "Pistol_Idle"

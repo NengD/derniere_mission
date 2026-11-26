@@ -1,6 +1,6 @@
 # Prépare les sons du jeu à partir des paquets CC0 téléchargés dans _sources/sons.
 # À lancer avec le Python de Blender (numpy + aud fournis) :
-#   blender -b --factory-startup -P tools/blender/make_sounds.py
+#   blender -b --factory-startup -P tools/blender/make_sounds.py [-- neon]   (neon : seulement les néons)
 # Écrit des WAV 16 bits mono 44,1 kHz dans assets/sons/.
 import os
 import sys
@@ -150,7 +150,41 @@ def bip_radio():
     return np.sin(2 * np.pi * 1450 * t) * 0.6 + gresil(0.09) * 0.2
 
 
+def neon_bourdon(duree=2.0):
+    # tube fluorescent sur secteur 60 Hz : bourdonnement à 120 Hz riche en harmoniques
+    # (ballast magnétique) + léger sifflement aigu ; durée = nombre entier de périodes -> boucle propre
+    t = t_(duree)
+    s = np.zeros(len(t))
+    for h, a in ((1, 1.0), (2, 0.55), (3, 0.35), (4, 0.22), (5, 0.12), (7, 0.08), (9, 0.05)):
+        s += a * np.sin(2 * np.pi * 120 * h * t + h * 0.7)
+    s = np.sign(s) * np.abs(s) ** 0.8          # un peu de saturation (tôle qui vibre)
+    s += 0.05 * np.sin(2 * np.pi * 9600 * t)   # sifflement du ballast
+    bruit = rng.normal(0, 1, len(t))
+    # bruit filtré (moyenne glissante), rendu périodique par fondu enchaîné
+    k = 40
+    bruit = np.convolve(np.concatenate([bruit[-k:], bruit]), np.ones(k) / k, "valid")[: len(t)]
+    s += bruit * 0.6
+    return s
+
+
+def neon_gresil(k):
+    # amorçage raté / faux contact : rafale de claquements et de bourdonnement haché
+    d = 0.18 + 0.12 * k
+    t = t_(d)
+    hache = (np.sin(2 * np.pi * (25 + 10 * k) * t) > 0.2 * k - 0.1).astype(float)
+    s = sum(np.sin(2 * np.pi * 120 * h * t) / h for h in range(1, 8)) * hache
+    claq = (rng.random(len(t)) > 0.997) * rng.normal(0, 5, len(t))
+    s += claq + rng.normal(0, 0.3, len(t)) * hache
+    return s
+
+
 def main():
+    if "neon" in sys.argv:
+        print("Néons")
+        ecrire("neon_bourdon", neon_bourdon(), -14.0, 0.0, 0.0)
+        for k in range(3):
+            ecrire("neon_gresil_%d" % (k + 1), neon_gresil(k), -8.0, 0.001, 0.03)
+        return
     print("Tirs")
     tirs("Walther PPQ/X_39P.wav", "tir_pistolet", 1.3)
     tirs("Walther PPQ/X_31P.wav", "tir_pistolet_loin", 1.8, -3.0)
@@ -193,6 +227,10 @@ def main():
     simple("amb_machines", os.path.join(SRC, "sfx100", "sfx100v2_loop_machine_01.ogg"), -10.0, None, -80.0, 0.0)
     simple("amb_grillons", os.path.join(SRC, "owlish", "Ambience", "night-crickets-ambience-on-rural-property.wav"), -12.0, 30.0, -80.0, 0.0)
     simple("amb_hangar", os.path.join(SRC, "sfx100", "sfx100v2_loop_ambient_01.ogg"), -10.0, None, -80.0, 0.0)
+    print("Néons")
+    ecrire("neon_bourdon", neon_bourdon(), -14.0, 0.0, 0.0)
+    for k in range(3):
+        ecrire("neon_gresil_%d" % (k + 1), neon_gresil(k), -8.0, 0.001, 0.03)
 
 
 main()
