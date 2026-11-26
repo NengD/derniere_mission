@@ -3,7 +3,7 @@
 Mémoire de travail du projet : à relire après chaque compactage, à mettre à jour à chaque tâche terminée.
 
 ## Tâche en cours
-Phase 1 — chantier « réalisme » (issue #4) : 1) lumière et rendu et 2) bras et arme FAITS (commit ci-dessous), **EN ATTENTE de l'avis du propriétaire** sur 1 et 2 (planches `docs/phase1/lumiere_avant_apres.jpg`, `bras_avant_apres.jpg`, vidéos `lumiere.mp4`, `bras.mp4`) AVANT 3) gardes et 4) décor. Ensuite : IA des gardes, dégâts localisés.
+Phase 1 — chantier « réalisme » (issue #4) : 1) et 2) faits (2eb5521) ; **passe de corrections demandée le 26/11/2026** (voir Retours), confiée à deux sous-agents (bras/arme/flash/ombre/à-coups ; lumière contre-jour). Ensuite : montrer planche avant/après + courte vidéo, PUIS enchaîner sans attendre sur 3) gardes, puis 4) décor.
 
 ## Fait
 - Phase 0 validée (tag `v0.0-phase0`) : direction artistique A (photoréaliste sombre), conception (`docs/CONCEPTION.md`), ressources (`docs/phase0/RESSOURCES.md`).
@@ -35,6 +35,8 @@ Phase 1 — chantier « réalisme » (issue #4) : 1) lumière et rendu et 2) bra
   2. Bras et arme : bras réalistes à la bonne taille (manches usées, gants tactiques cuir texturés ou mains détaillées), MPFB ou Blender ; doigts sur poignée / détente / glissière, main gauche en soutien, rechargement à deux mains ; pistolet détaillé (glissière, mire, rayures, usure, numéros, polymère), glissière qui recule, douille, flash ; arme tenue bras tendus depuis la poitrine, balancement réaliste, recul fort.
   3. Gardes : vêtements (plis, coutures, usure, taches, normal maps), peau à pores ; corriger cache-cou moulé, bandana plaqué, anneau de peau ; animations de capture CMU (citer la source) retravaillées ; mort = ragdoll physique avec élan et zone d'impact.
   4. Décor : câbles, tuyaux, gaines, aérations, humidité, flaques réfléchissantes, déchets, mégots, tags, affiches déchirées, portes abîmées, poussière (décalques) ; textures Poly Haven / ambientCG 2K sans répétition visible.
+
+- 26/11/2026, avis sur 1 et 2 : « bon progrès sur la lumière, garde cette ambiance ». À corriger : flash du tir (bref, éclaire la pièce un instant sans blanchir l'image, sans étoile, fumée légère), gants trop clairs, manches = deux gros cylindres qui prennent le bas de l'image (affiner, plis, avant-bras naturel ; ne montrer qu'avant-bras et mains comme une caméra de poitrine), doigts écartés en griffes (index le long de la glissière hors tir, pouce gauche à plat sur le côté), mains qui traversent la poche au rechargement ; chercher des bras de FPS réalistes libres (CC0/CC-BY) meilleurs que les nôtres ; pistolet trop petit (Glock 17 ≈ 20 cm) ; trop sombre par endroits : ennemis qui se détachent (contre-jour, silhouettes devant les lampes) en gardant les noirs ; ombre du joueur = tache noire informe → vraie ombre de Marc ou aucune ; à-coups de 0,15 s à l'impact si revus. Puis planche avant/après + vidéo, et passer aux gardes.
 
 ## Prochaines étapes (phase 1)
 1. Joueur : déplacements, caméra-piéton, pistolet à la 1re personne, santé, sons.
