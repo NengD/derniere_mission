@@ -25,6 +25,12 @@ Marc Delmas, 48 ans, ex-commando, vient chercher sa fille Léa (22 ans), enlevé
 - **Après chaque compactage** : relire CLAUDE.md, docs/PROGRESSION.md (et la partie utile de PROMPT_FPS_DERNIERE_MISSION.md) avant de continuer, puis reprendre sans demander.
 - **Économiser la mémoire** : longues sorties (téléchargements, exports, journaux, tests) redirigées dans `logs/` (ignoré par git), n'en lire que les erreurs et le résumé ; ne pas relire en entier les gros fichiers (chercher) ; images et vidéos avec parcimonie (une planche réduite plutôt que beaucoup d'images).
 
+## Armes : modèles Sketchfab (demande du propriétaire, 26/11/2026)
+- Armes = modèles réalistes Sketchfab plutôt que faits main. Jeton d'API du propriétaire dans `.secrets/sketchfab_token` (ignoré par git) ou variable d'environnement `SKETCHFAB_TOKEN` : JAMAIS dans le dépôt, un journal, un commit, la doc ou un message.
+- Licences : CC0 et CC-BY uniquement (crédit complet dans CREDITS.md : auteur, titre, lien, licence). Refuser NC, ND, SA, licences Standard/Editorial de Sketchfab et tout asset Fab.
+- Montrer 2 ou 3 choix par arme (capture, auteur, licence, polygones) AVANT d'intégrer. Retirer logos et marques, noms génériques dans le jeu. Optimiser (polygones raisonnables en 1re personne, textures 2K), séparer les pièces mobiles (glissière/culasse, chargeur, détente, pompe) et les brancher sur les animations de tir et de rechargement.
+- Calendrier : fusil à pompe et fusil d'assaut en Phase 2 (arsenal) ; pistolet actuel : d'abord une comparaison avant/après proposée au propriétaire.
+
 ## Commandes
 - Chemins locaux de Godot 4.7.2 (console) et Blender 5.2 : dans `CLAUDE.local.md` (ignoré par git). Modèles d'export 4.7.2 installés.
 - Import : `godot --headless --path . --import`

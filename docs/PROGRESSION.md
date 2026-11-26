@@ -3,7 +3,7 @@
 Mémoire de travail du projet : à relire après chaque compactage, à mettre à jour à chaque tâche terminée.
 
 ## Tâche en cours
-Phase 1 — chantier « réalisme » (issue #4) : les 4 chantiers (lumière, bras/arme + corrections, gardes, décor) sont FAITS et montrés. **EN ATTENTE de l'avis du propriétaire** sur l'ensemble et sur la caméra de poitrine. Ensuite : IA des gardes (arbre de comportement), sang/démembrement, niveau 1.
+Phase 1 — chantier « réalisme » (issue #4) : les 4 chantiers (lumière, bras/arme + corrections, gardes, décor) sont FAITS et montrés. **EN ATTENTE de l'avis du propriétaire** sur l'ensemble et sur la caméra de poitrine. Ensuite : IA des gardes (arbre de comportement), sang/démembrement, niveau 1. **En parallèle (26/11/2026)** : pistolet Sketchfab — sous-agent qui cherche 2-3 modèles de pistolet 9 mm CC0/CC-BY et prépare une comparaison avant/après SANS intégrer ; choix à faire par le propriétaire.
 
 ## Fait
 - Phase 0 validée (tag `v0.0-phase0`) : direction artistique A (photoréaliste sombre), conception (`docs/CONCEPTION.md`), ressources (`docs/phase0/RESSOURCES.md`).
@@ -41,6 +41,8 @@ Phase 1 — chantier « réalisme » (issue #4) : les 4 chantiers (lumière, bra
   4. Décor : câbles, tuyaux, gaines, aérations, humidité, flaques réfléchissantes, déchets, mégots, tags, affiches déchirées, portes abîmées, poussière (décalques) ; textures Poly Haven / ambientCG 2K sans répétition visible.
 
 - 26/11/2026, avis sur 1 et 2 : « bon progrès sur la lumière, garde cette ambiance ». À corriger : flash du tir (bref, éclaire la pièce un instant sans blanchir l'image, sans étoile, fumée légère), gants trop clairs, manches = deux gros cylindres qui prennent le bas de l'image (affiner, plis, avant-bras naturel ; ne montrer qu'avant-bras et mains comme une caméra de poitrine), doigts écartés en griffes (index le long de la glissière hors tir, pouce gauche à plat sur le côté), mains qui traversent la poche au rechargement ; chercher des bras de FPS réalistes libres (CC0/CC-BY) meilleurs que les nôtres ; pistolet trop petit (Glock 17 ≈ 20 cm) ; trop sombre par endroits : ennemis qui se détachent (contre-jour, silhouettes devant les lampes) en gardant les noirs ; ombre du joueur = tache noire informe → vraie ombre de Marc ou aucune ; à-coups de 0,15 s à l'impact si revus. Puis planche avant/après + vidéo, et passer aux gardes.
+
+- 26/11/2026 : armes = modèles réalistes Sketchfab (règles dans CLAUDE.md, section « Armes ») ; jeton dans `.secrets/sketchfab_token` (ignoré). Pistolet : comparaison avant/après d'abord ; fusil à pompe et fusil d'assaut en Phase 2, avec 2-3 choix par arme à montrer avant intégration.
 
 ## Prochaines étapes (phase 1)
 1. Joueur : déplacements, caméra-piéton, pistolet à la 1re personne, santé, sons.

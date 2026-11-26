@@ -20,3 +20,4 @@ Thumbs.db
 docs/**/*.mp4
 CLAUDE.local.md
 /logs/
+/.secrets/
