@@ -231,6 +231,12 @@ func appliquer_qualite() -> void:
 	var e := environnement
 	e.ssil_enabled = q >= 2
 	e.ssao_enabled = q >= 1
+	# reflets d'écran (flaques, sols mouillés du kit de décor) : Moyen et Élevé
+	e.ssr_enabled = q >= 1
+	e.ssr_max_steps = [32, 48, 64][q]
+	e.ssr_fade_in = 0.15
+	e.ssr_fade_out = 2.0
+	e.ssr_depth_tolerance = 0.3
 	e.volumetric_fog_enabled = true
 	e.sdfgi_enabled = false
 	RenderingServer.environment_set_ssao_quality(

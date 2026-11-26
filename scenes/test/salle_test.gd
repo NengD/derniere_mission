@@ -7,6 +7,7 @@ extends Node3D
 ##   video   (avec --write-movie x.avi --fixed-fps 30) : scénario scripté puis quitte
 ##   video court : les 10,5 premières secondes seulement
 ##   perf [0|1|2]  même scénario en temps réel, vsync coupée : i/s moyenne et 1 % bas dans logs/perf.txt
+##   video_decor (avec --write-movie) : 9,5 s de marche lente pour montrer le décor (flaque, plafond, porte)
 ##   video_bras (avec --write-movie) : 9,6 s de bras et d'arme (marche, 4 tirs, culasse ouverte, rechargement à vide)
 ##   video_ragdoll [ext] (avec --write-movie) : 10,8 s, quatre gardes tués de quatre façons (tête, torse en
 ##     marche, jambe puis achèvement au sol, bras puis torse) : ragdolls tous différents
@@ -128,21 +129,48 @@ func _environnement() -> void:
 	add_child(rendu)
 
 
+## Porte de service entrouverte dans le mur gauche (centre en z) et réduit sombre derrière.
+const PORTE_Z := -4.6
+const REDUIT := 1.9
+
+
 func _couloir() -> void:
-	var sol := _mat("hangar_concrete_floor", 0.35)
-	var mur := _mat("concrete_wall_008", 0.4, Color(0.8, 0.8, 0.78))
-	var soubassement := _mat("painted_concrete", 0.5, Color(0.42, 0.5, 0.46))
-	var plafond := _mat("concrete_panels", 0.4, Color(0.6, 0.6, 0.6))
+	# matériaux du kit de décor (scripts/decor/) : deux échelles, plaques d'un second matériau,
+	# teinte et décalage propres à chaque mur, saleté au pied, suie sous le plafond
+	var sol := KitDecor.materiau("hangar_concrete_floor", 0.35, Color.WHITE,
+		{"tex2": "concrete_floor_worn_001", "echelle2": 0.3, "part_second": 0.45, "variation": 0.25})
+	var mur := KitDecor.materiau("concrete_wall_008", 0.4, Color(0.8, 0.8, 0.78),
+		{"suie": 0.6, "plafond_y": H, "variation": 0.18})
+	var soubassement := KitDecor.materiau("painted_concrete", 0.5, Color(0.42, 0.5, 0.46),
+		{"tex2": "peeling_painted_wall", "echelle2": 0.5, "part_second": 0.3, "salete": 0.45, "humidite": 0.7, "variation": 0.2})
+	var plafond := KitDecor.materiau("concrete_panels", 0.4, Color(0.6, 0.6, 0.6), {"variation": 0.3, "suie": 0.0})
 	var lg := Z0 - Z1
 	var cz := (Z0 + Z1) / 2.0
 	_boite(Vector3(W + 0.4, 0.2, lg), Vector3(0, -0.1, cz), sol)
 	_boite(Vector3(W + 0.4, 0.2, lg), Vector3(0, H + 0.1, cz), plafond)
-	_boite(Vector3(0.2, H, lg), Vector3(-W / 2 - 0.1, H / 2, cz), mur)
-	_boite(Vector3(0.2, H, lg), Vector3(W / 2 + 0.1, H / 2, cz), mur)
-	_boite(Vector3(0.03, 1.15, lg), Vector3(-W / 2 + 0.015, 0.575, cz), soubassement)
-	_boite(Vector3(0.03, 1.15, lg), Vector3(W / 2 - 0.015, 0.575, cz), soubassement)
-	_boite(Vector3(W, H, 0.2), Vector3(0, H / 2, Z1 - 0.1), mur)
-	_boite(Vector3(W, H, 0.2), Vector3(0, H / 2, Z0 + 0.1), mur)
+	# mur gauche coupé par la porte (deux pans + linteau), mur droit d'un seul tenant
+	var pz0 := PORTE_Z - 0.5
+	var pz1 := PORTE_Z + 0.5
+	var mg := KitDecor.varier(mur, 11)
+	_boite(Vector3(0.2, H, Z0 - pz1), Vector3(-W / 2 - 0.1, H / 2, (Z0 + pz1) / 2), mg)
+	_boite(Vector3(0.2, H, pz0 - Z1), Vector3(-W / 2 - 0.1, H / 2, (pz0 + Z1) / 2), mg)
+	_boite(Vector3(0.2, H - 2.09, 1.0), Vector3(-W / 2 - 0.1, (H + 2.09) / 2, PORTE_Z), mg)
+	_boite(Vector3(0.2, H, lg), Vector3(W / 2 + 0.1, H / 2, cz), KitDecor.varier(mur, 12))
+	var sg := KitDecor.varier(soubassement, 13)
+	_boite(Vector3(0.03, 1.15, Z0 - pz1), Vector3(-W / 2 + 0.015, 0.575, (Z0 + pz1) / 2), sg)
+	_boite(Vector3(0.03, 1.15, pz0 - Z1), Vector3(-W / 2 + 0.015, 0.575, (pz0 + Z1) / 2), sg)
+	_boite(Vector3(0.03, 1.15, lg), Vector3(W / 2 - 0.015, 0.575, cz), KitDecor.varier(soubassement, 14))
+	_boite(Vector3(W, H, 0.2), Vector3(0, H / 2, Z1 - 0.1), KitDecor.varier(mur, 15))
+	_boite(Vector3(W, H, 0.2), Vector3(0, H / 2, Z0 + 0.1), KitDecor.varier(mur, 16))
+	# réduit derrière la porte : noir, juste assez profond pour qu'on devine des étagères
+	var xr := -W / 2 - 0.2
+	var rz := PORTE_Z
+	var mr := KitDecor.varier(mur, 17)
+	_boite(Vector3(REDUIT, 0.2, 2.4), Vector3(xr - REDUIT / 2, -0.1, rz), KitDecor.varier(sol, 18))
+	_boite(Vector3(REDUIT, 0.2, 2.4), Vector3(xr - REDUIT / 2, 2.7, rz), plafond)
+	_boite(Vector3(0.2, 2.6, 2.4), Vector3(xr - REDUIT - 0.1, 1.3, rz), mr)
+	_boite(Vector3(REDUIT, 2.6, 0.2), Vector3(xr - REDUIT / 2, 1.3, rz - 1.3), mr)
+	_boite(Vector3(REDUIT, 2.6, 0.2), Vector3(xr - REDUIT / 2, 1.3, rz + 1.3), mr)
 	# poteau métallique et plaque d'acier (impacts métalliques)
 	var acier := _mat("rusty_painted_metal", 1.0, Color(0.45, 0.45, 0.45))
 	_boite(Vector3(0.25, H, 0.25), Vector3(-W / 2 + 0.125, H / 2, -8.0), acier, "metal")
@@ -198,9 +226,64 @@ func _objets() -> void:
 	tag.rotation_degrees = Vector3(0, 0, -90)
 	tag.cull_mask = 1
 	add_child(tag)
+	_decor()
 	# objets ramassables (couche 5)
 	_ramassable("chargeur", Vector3(W / 2 - 0.5, 1.2, -6.0))
 	_ramassable("trousse", Vector3(-W / 2 + 0.4, 0.84, -2.95))
+
+
+## Habillage du couloir par le kit de décor (scripts/decor/kit_decor.gd) : plafond technique (gaine,
+## chemin de câbles, canalisations qui fuient), saleté, humidité, flaques, déchets, affiches et tags,
+## deux portes abîmées (une entrouverte sur le réduit, une fermée). Zones laissées libres : objets,
+## gardes, cibles, départ du joueur, lampes.
+var decor: KitDecor
+
+
+func _decor() -> void:
+	decor = KitDecor.new()
+	decor.graine = 7
+	var libre := func(x: float, z: float, r := 0.45) -> AABB:
+		return AABB(Vector3(x - r, -0.1, z - r), Vector3(2 * r, 3.2, 2 * r))
+	decor.evite = [
+		AABB(Vector3(W / 2 - 0.9, -0.1, -6.8), Vector3(0.9, 2, 1.9)),       # caisses
+		AABB(Vector3(-W / 2, -0.1, -3.5), Vector3(0.7, 2, 1.0)),            # cartons
+		AABB(Vector3(-W / 2, -0.1, -11.0), Vector3(0.7, 2, 0.8)),           # poubelle
+		AABB(Vector3(W / 2 - 0.9, -0.1, -12.6), Vector3(0.9, 2, 1.2)),      # diable
+		AABB(Vector3(W / 2 - 0.4, -0.1, -1.9), Vector3(0.4, 2, 0.8)),       # extincteur
+		AABB(Vector3(-W / 2, -0.1, -8.3), Vector3(0.45, 2, 0.6)),           # poteau
+		AABB(Vector3(-W / 2, -0.1, PORTE_Z - 0.7), Vector3(0.8, 2, 1.4)),   # battant de la porte
+		AABB(Vector3(-W / 2, -0.1, Z1), Vector3(W, 2, 1.6)),                # contre-jour sous le rideau
+		libre.call(-0.3, 0.8, 0.7),                                          # départ du joueur
+	]
+	for p in [Vector3(-0.95, 0, -7.6), Vector3(-0.25, 0, -14.3), Vector3(1.05, 0, -11.2), Vector3(0.95, 0, -16.2),
+			Vector3(-0.9, 0, -5.2), Vector3(0.9, 0, -13.6), Vector3(0.55, 0, -9.5), Vector3(-0.8, 0, -12.8), Vector3(0.7, 0, -15.6)]:
+		decor.evite.append(libre.call(p.x, p.z))
+	var murs := func(c: Vector3, t: Vector3) -> AABB:
+		return AABB(c - t / 2, t)
+	decor.evite_murs = [
+		murs.call(Vector3(-W / 2, 2.2, -9.6), Vector3(0.6, 1.2, 1.0)),       # lampe rouge
+		murs.call(Vector3(-W / 2, 1.6, -7.2), Vector3(0.6, 1.4, 2.2)),       # tag du cercle, poteau
+		murs.call(Vector3(-W / 2, 1.2, PORTE_Z), Vector3(0.6, 2.6, 1.4)),    # porte gauche
+		murs.call(Vector3(W / 2, 1.2, -14.0), Vector3(0.6, 2.6, 1.4)),       # porte droite
+		murs.call(Vector3(W / 2, 1.0, -1.5), Vector3(0.6, 1.5, 0.8)),        # extincteur
+		murs.call(Vector3(W / 2, 1.0, -5.85), Vector3(0.6, 1.0, 1.8)),       # caisses
+	]
+	for z in [0.0, -4.0, -16.0, -12.0]:
+		decor.evite_murs.append(murs.call(Vector3(0, H, z), Vector3(W, 0.6, 1.8)))   # néons, ampoule
+	add_child(decor)
+	decor.couloir(AABB(Vector3(-W / 2, 0, Z1), Vector3(W, H, Z0 - Z1)), {
+		"gaine": 1, "cables": -1, "tuyaux": -1, "fin_gaine": -15.0,
+		"fuite": Vector3(-1.2, 0, -6.6), "flaques": 0,
+		"flaques_pos": [Vector3(0.3, 0, -1.5), Vector3(0.15, 0, -15.2)],
+		"dechets": 1.8, "affiches": 5, "tags": 4})
+	# portes abîmées : service entrouverte sur le réduit (gauche), fermée (droite)
+	decor.porte(Vector3(-W / 2 - 0.1, 0, PORTE_Z + 0.46), 90.0, 55.0)
+	decor.porte(Vector3(W / 2, 0, -14.0 - 0.46), -90.0, 0.0, Color(0.6, 0.62, 0.66))
+	# un peu de bazar dans le réduit
+	_modele("cardboard_box_01", Vector3(-W / 2 - 1.6, 0, PORTE_Z - 0.6), 25, "", true, "carton")
+	_modele("cardboard_box_01", Vector3(-W / 2 - 1.5, 0, PORTE_Z + 0.5), -10, "", true, "carton")
+	KitDecor.marquer(self)
+	print("Décor : %d décalques" % decor.nb_decalques)
 
 
 func _ramassable(type: String, pos: Vector3) -> void:
@@ -383,6 +466,10 @@ func _physics_process(delta: float) -> void:
 	elif mode == "video_bras":
 		_video_bras()
 		if t >= 9.6 and _une_fois("fin"):
+			_quitter()
+	elif mode == "video_decor":
+		_video_decor()
+		if t >= 9.5 and _une_fois("fin"):
 			_quitter()
 
 
@@ -573,6 +660,30 @@ func _video_bras() -> void:
 		_viser_vers(_torse(1), 1.2)
 
 
+## Vidéo du décor (9,5 s) : marche lente, regard sur la flaque (reflet du néon), au plafond (gaine,
+## câbles, tuyaux), sur la porte entrouverte, sur les affiches, puis vers le fond en contre-jour.
+func _video_decor() -> void:
+	var j := joueur
+	j.auto_axes = Vector2.ZERO
+	j.auto_tenu.clear()
+	if t < 0.05:
+		j.global_position = Vector3(0.35, 0.05, 1.0)
+	if t < 8.6:
+		j.auto_axes = Vector2(0, 0.4)
+	if t < 2.0:
+		_regarder(2.0, -48.0, 2.0)
+	elif t < 3.0:
+		_regarder(-14.0, 34.0, 1.6)
+	elif t < 4.3:
+		_regarder(38.0, -8.0, 1.6)
+	elif t < 5.4:
+		_regarder(16.0, 32.0, 1.4)
+	elif t < 6.9:
+		_regarder(-50.0, 0.0, 1.8)
+	else:
+		_regarder(0.0, -9.0, 1.6)
+
+
 var _gizmos: Array = []
 
 
@@ -643,6 +754,17 @@ func _photo() -> void:
 			if gardes.size() >= 2:
 				_viser_vers(gardes[0 if vue == "sombre" else 1].global_position + Vector3(0, 1.3, 0), 4.0)
 			fin = 3.0   # laisse l'exposition automatique se poser
+		"porte":
+			if t < 0.05:
+				j.global_position = Vector3(0.5, 0.05, -2.9)
+			_viser_vers(Vector3(-W / 2, 1.0, PORTE_Z - 0.2), 4.0)
+			fin = 2.5
+		"plafond", "sol", "couloir", "flaque":
+			# décor : plafond technique, sol (poussière, déchets, flaque), couloir en enfilade
+			if t < 0.05:
+				j.global_position = {"plafond": Vector3(0.3, 0.05, -2.0), "sol": Vector3(0.2, 0.05, -1.2), "couloir": Vector3(0.9, 0.05, 1.4), "flaque": Vector3(0.35, 0.05, -0.25)}[vue]
+			_regarder({"plafond": 4.0, "sol": 6.0, "couloir": 6.0, "flaque": 2.0}[vue], {"plafond": 38.0, "sol": -42.0, "couloir": -3.0, "flaque": -50.0}[vue], 6.0)
+			fin = 2.5
 		"penche":
 			j.auto_tenu["pencher_droite"] = true
 			_viser_vers(_torse(0), 4.0)
