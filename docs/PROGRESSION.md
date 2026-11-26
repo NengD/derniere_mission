@@ -3,7 +3,7 @@
 Mémoire de travail du projet : à relire après chaque compactage, à mettre à jour à chaque tâche terminée.
 
 ## Tâche en cours
-Phase 1 (tranche verticale, niveau 1) — tâches Joueur et gardes MPFB FAITES. **EN ATTENTE de l'avis du propriétaire** sur les gardes (captures `docs/phase1/gardes_*.jpg`, vidéo `docs/phase1/gardes.mp4`) avant de continuer la tâche Garde (IA, dégâts localisés, ragdoll).
+Phase 1 — **chantier « réalisme » demandé par le propriétaire le 26/11/2026 (issue #4)** : 1) lumière et rendu, 2) bras et arme à la 1re personne — confiés à deux sous-agents en parallèle ; MONTRER 1 et 2 au propriétaire AVANT de faire 3) gardes (matériaux, défauts, animations CMU, ragdoll) et 4) décor. Ensuite seulement : IA des gardes, dégâts localisés.
 
 ## Fait
 - Phase 0 validée (tag `v0.0-phase0`) : direction artistique A (photoréaliste sombre), conception (`docs/CONCEPTION.md`), ressources (`docs/phase0/RESSOURCES.md`).
@@ -26,6 +26,12 @@ Phase 1 (tranche verticale, niveau 1) — tâches Joueur et gardes MPFB FAITES. 
 ## Retours du propriétaire
 - Issue #1 : gardes MakeHuman / MPFB (CC0 ; ressources communautaires CC-BY à créditer), plusieurs variantes (corpulence, âge, vêtements réalistes, visage couvert), branchés sur les animations ; montrer captures + courte vidéo avant de continuer.
 - Issue #2 : mains et prise de l'arme à soigner. Issue #3 : sang sur l'objectif plus réaliste.
+
+- 26/11/2026, avis sur joueur + gardes : « pas encore assez réaliste ». Objectif : qu'une capture puisse passer pour une vraie vidéo de caméra-piéton (références : Better Than Dead, Unrecord, vraies bodycams de police). Comparer côte à côte référence / avant / après à chaque retouche, courte vidéo, ≥ 60 i/s sur son PC. Ordre :
+  1. Lumière et rendu : LightmapGI avec rebonds, SSAO + SSIL, ombres de contact, volumétrique et poussière, sources visibles (néons qui grésillent, ampoules nues, lampes de sécurité), forts contrastes ; exposition auto qui « pompe » ; étalonnage désaturé, verts/jaunes de néon ; effet bodycam plus fort (fisheye, blocs de compression dans les mouvements rapides, bruit numérique dans le noir, saccades, flou de mouvement, reflets d'objectif).
+  2. Bras et arme : bras réalistes à la bonne taille (manches usées, gants tactiques cuir texturés ou mains détaillées), MPFB ou Blender ; doigts sur poignée / détente / glissière, main gauche en soutien, rechargement à deux mains ; pistolet détaillé (glissière, mire, rayures, usure, numéros, polymère), glissière qui recule, douille, flash ; arme tenue bras tendus depuis la poitrine, balancement réaliste, recul fort.
+  3. Gardes : vêtements (plis, coutures, usure, taches, normal maps), peau à pores ; corriger cache-cou moulé, bandana plaqué, anneau de peau ; animations de capture CMU (citer la source) retravaillées ; mort = ragdoll physique avec élan et zone d'impact.
+  4. Décor : câbles, tuyaux, gaines, aérations, humidité, flaques réfléchissantes, déchets, mégots, tags, affiches déchirées, portes abîmées, poussière (décalques) ; textures Poly Haven / ambientCG 2K sans répétition visible.
 
 ## Prochaines étapes (phase 1)
 1. Joueur : déplacements, caméra-piéton, pistolet à la 1re personne, santé, sons.
