@@ -5,7 +5,8 @@ Sorties (assets/fx/) :
   sang_eclaboussure.png  éclaboussure de sang pour les murs et le sol (décalque)
   sang_flaque.png        flaque
   tag_cercle.png         tag peint à la bombe du cartel « El Círculo de Cobre »
-  flash_canon.png        étoile de flash de bouche
+  flash_canon.png        flamme de bouche vue de face : 4 variantes (atlas 2 × 2), fleur de gaz chauds sans branches
+  flamme_bouche.png      flamme de bouche vue de côté : 4 variantes empilées (atlas 1 × 4), bouche à gauche
   impact_balle.png       trou de balle dans le béton (décalque : trou, éclats, auréole de poussière)
   fumee.png              bouffée de fumée douce (particules : canon, poussière d'impact)
 
@@ -104,22 +105,97 @@ def tag(size=1024):
     return rgba
 
 
-def flash(size=256):
+def _couleur_flamme(a):
+    """Intensité → flamme : cœur blanc-jaune, bords orange puis rouge sombre (canal alpha = intensité)."""
+    r = a.point(lambda v: min(255, int(v * 1.9)))
+    g = a.point(lambda v: min(255, int(255 * (v / 255.0) ** 1.35 * 1.35)))
+    b = a.point(lambda v: min(255, int(255 * (v / 255.0) ** 3.2 * 1.2)))
+    return Image.merge("RGBA", (r, g, b, a))
+
+
+def _flamme_cote(rnd, w, h):
+    """Bouffée de gaz vue de côté : jet étroit à la bouche (x = 0), qui s'ouvre en boule irrégulière,
+    quelques langues latérales. Pas d'étoile ni de traits nets."""
+    a = Image.new("L", (w, h), 0)
+    d = ImageDraw.Draw(a)
+    cy = h / 2
+    long = rnd.uniform(0.62, 0.92) * w
+    # jet : chapelet d'ellipses de plus en plus larges
+    n = 28
+    for i in range(n):
+        u = i / (n - 1)
+        x = u * long * 0.55
+        r = h * (0.05 + 0.16 * u) * rnd.uniform(0.8, 1.15)
+        y = cy + rnd.gauss(0, h * 0.02)
+        d.ellipse((x - r * 1.4, y - r, x + r * 1.4, y + r), fill=int(140 + 115 * (1 - u) ** 2))
+    # boule de gaz (zone de détente), irrégulière
+    bx = long * rnd.uniform(0.5, 0.62)
+    for _ in range(26):
+        r = h * rnd.uniform(0.07, 0.2)
+        x = min(long * 0.85, bx + rnd.gauss(0, long * 0.08))
+        y = cy + rnd.gauss(0, h * 0.09)
+        d.ellipse((x - r, y - r, x + r, y + r), fill=rnd.randint(90, 190))
+    # langues latérales (gaz qui s'échappent en biais), douces
+    for _ in range(rnd.randint(2, 4)):
+        ang = rnd.choice((-1, 1)) * rnd.uniform(0.35, 0.8)
+        ln = long * rnd.uniform(0.25, 0.45)
+        x0 = long * rnd.uniform(0.05, 0.2)
+        for k in range(10):
+            u = k / 9
+            x = x0 + math.cos(ang) * ln * u
+            y = cy + math.sin(ang) * ln * u * (h / w) * 3.0
+            r = h * (0.03 + 0.06 * u)
+            d.ellipse((x - r, y - r, x + r, y + r), fill=int(120 * (1 - 0.6 * u)))
+    a = a.filter(ImageFilter.GaussianBlur(h * 0.05))
+    # bords fondus (aucune coupure nette sur le quad)
+    m = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(m).ellipse((-w * 0.1, h * 0.04, w * 0.98, h * 0.96), fill=255)
+    m = m.filter(ImageFilter.GaussianBlur(h * 0.08))
+    return Image.composite(a, Image.new("L", (w, h), 0), m)
+
+
+def flamme_bouche(w=512, h=128):
+    out = Image.new("RGBA", (w, h * 4), (0, 0, 0, 0))
+    for i in range(4):
+        out.paste(_couleur_flamme(_flamme_cote(random.Random(40 + i), w, h)), (0, i * h))
+    return out
+
+
+def _flamme_face(rnd, size):
+    """Bouffée vue de face : disque chaud irrégulier, 4 à 6 lobes doux (pas de branches d'étoile)."""
     a = Image.new("L", (size, size), 0)
     d = ImageDraw.Draw(a)
     c = size / 2
-    rnd = random.Random(3)
-    for i in range(5):
-        ang = i * math.tau / 5 + rnd.uniform(-0.2, 0.2)
-        ln = size * rnd.uniform(0.35, 0.48)
-        w = size * 0.05
-        pts = [(c + math.cos(ang + 1.57) * w, c + math.sin(ang + 1.57) * w),
-               (c + math.cos(ang) * ln, c + math.sin(ang) * ln),
-               (c + math.cos(ang - 1.57) * w, c + math.sin(ang - 1.57) * w)]
-        d.polygon(pts, fill=255)
-    d.ellipse((c - size * 0.13, c - size * 0.13, c + size * 0.13, c + size * 0.13), fill=255)
-    a = a.filter(ImageFilter.GaussianBlur(5))
-    return Image.merge("RGBA", (Image.new("L", a.size, 255), Image.new("L", a.size, 190), Image.new("L", a.size, 110), a))
+    r0 = size * 0.12
+    d.ellipse((c - r0, c - r0, c + r0, c + r0), fill=235)
+    n = rnd.randint(6, 9)
+    a0 = rnd.uniform(0, math.tau)
+    for i in range(n):
+        ang = a0 + i * math.tau / n + rnd.uniform(-0.35, 0.35)
+        for k in range(6):
+            u = k / 5
+            dist = size * (0.05 + 0.13 * u) * rnd.uniform(0.8, 1.15)
+            r = size * (0.08 - 0.03 * u) * rnd.uniform(0.8, 1.2)
+            x, y = c + math.cos(ang) * dist, c + math.sin(ang) * dist
+            d.ellipse((x - r, y - r, x + r, y + r), fill=int(170 * (1 - 0.55 * u)))
+    for _ in range(30):
+        ang = rnd.uniform(0, math.tau)
+        dist = abs(rnd.gauss(0, 0.13)) * size
+        r = size * rnd.uniform(0.04, 0.09)
+        x, y = c + math.cos(ang) * dist, c + math.sin(ang) * dist
+        d.ellipse((x - r, y - r, x + r, y + r), fill=rnd.randint(60, 140))
+    a = a.filter(ImageFilter.GaussianBlur(size * 0.04))
+    m = Image.new("L", (size, size), 0)
+    ImageDraw.Draw(m).ellipse((size * 0.06, size * 0.06, size * 0.94, size * 0.94), fill=255)
+    m = m.filter(ImageFilter.GaussianBlur(size * 0.08))
+    return Image.composite(a, Image.new("L", (size, size), 0), m)
+
+
+def flash(size=256):
+    out = Image.new("RGBA", (size * 2, size * 2), (0, 0, 0, 0))
+    for i in range(4):
+        out.paste(_couleur_flamme(_flamme_face(random.Random(20 + i), size)), ((i % 2) * size, (i // 2) * size))
+    return out
 
 
 def bullet_hole(size=256):
@@ -202,6 +278,7 @@ SORTIES = {
     "sang_flaque": lambda: puddle(5),
     "tag_cercle": tag,
     "flash_canon": flash,
+    "flamme_bouche": flamme_bouche,
     "impact_balle": bullet_hole,
     "fumee": smoke,
 }

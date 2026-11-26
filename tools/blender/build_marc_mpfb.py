@@ -159,27 +159,117 @@ def habiller_veste(ob, data_dir):
     ob.data.materials.append(mat)
 
 
+def _sur_bras(w, segs):
+    """Point le plus proche sur la ligne épaule → coude → poignet : (abscisse depuis l'épaule, point, axe)."""
+    meilleur = None
+    cumul = 0.0
+    for p0, p1 in segs:
+        ax = p1 - p0
+        L = ax.length
+        u = max(0.0, min(L, (w - p0).dot(ax / L)))
+        q = p0 + ax / L * u
+        dd = (w - q).length
+        if meilleur is None or dd < meilleur[0]:
+            meilleur = (dd, cumul + u, q, ax / L)
+        cumul += L
+    return meilleur
+
+
+# rayon voulu de la manche (m) le long du bras, abscisse relative (0 = épaule, 1 = poignet) :
+# bras 6,2 cm, coude 5,2 cm, avant-bras 4,6 cm, poignet 4 cm (avant-bras d'homme ≈ 28 cm de tour + tissu)
+PROFIL_MANCHE = ((0.25, 0.062), (0.5, 0.055), (0.62, 0.052), (0.8, 0.046), (1.0, 0.04))
+
+
+def _profil(x):
+    if x <= PROFIL_MANCHE[0][0]:
+        return PROFIL_MANCHE[0][1]
+    for (x0, r0), (x1, r1) in zip(PROFIL_MANCHE, PROFIL_MANCHE[1:]):
+        if x <= x1:
+            return r0 + (r1 - r0) * (x - x0) / (x1 - x0)
+    return PROFIL_MANCHE[-1][1]
+
+
 def resserrer_manches(veste, rig):
-    """Bas des manches resserré autour du poignet (la veste d'origine est large et cache les mains)."""
+    """Manches de veste amincies à la forme d'un avant-bras (la veste MakeHuman est un costume ample :
+    deux gros cylindres en bas de l'image), raccourcies de 3,5 cm au poignet (la manchette du gant dépasse),
+    avec plis : accordéon au poignet, plis de flexion au creux du coude, ondulations légères ailleurs.
+    Les manches sont d'abord subdivisées une fois (plis ronds)."""
     mw = rig.matrix_world
+    mwi = veste.matrix_world.inverted()
+    bras = {}
     for c in "lr":
+        e = mw @ rig.data.bones["upperarm_" + c].head_local
+        k = mw @ rig.data.bones["lowerarm_" + c].head_local
         p = mw @ rig.data.bones["hand_" + c].head_local
-        e = mw @ rig.data.bones["lowerarm_" + c].head_local
-        axe = (p - e).normalized()
-        long = (p - e).length
-        for v in veste.data.vertices:
-            w = veste.matrix_world @ v.co
-            t = (w - e).dot(axe)
-            if t < long * 0.45 or t > long + 0.03:
+        bras[c] = ([(e, k), (k, p)], (k - e).length + (p - k).length, (k - e).length, e)
+    # 1. subdivision des faces de manche (au-delà de l'aisselle)
+    bm = bmesh.new()
+    bm.from_mesh(veste.data)
+
+    def classe(w):
+        for c, (segs, long, lu, e) in bras.items():
+            if (w.x - e.x) * (1 if e.x > 0 else -1) < 0.02:
                 continue
-            q = e + axe * t
-            r = w - q
-            if r.length > 0.12:
-                continue
-            k = min(1.0, (t - long * 0.45) / (long * 0.55))
-            f = 1.0 - 0.32 * k * k
-            v.co = veste.matrix_world.inverted() @ (q + r * f)
-    log("manches resserrées")
+            m = _sur_bras(w, segs)
+            if m[0] < 0.16 and m[1] > lu * 0.3:
+                return c, m
+        return None, None
+    sel = [ed for ed in bm.edges if all(classe(veste.matrix_world @ v.co)[0] for v in ed.verts)]
+    bmesh.ops.subdivide_edges(bm, edges=sel, cuts=1, use_grid_fill=True, smooth=0.6)
+    bm.to_mesh(veste.data)
+    bm.free()
+    # 2. classement des sommets par bras et par tranche
+    info = {}
+    for v in veste.data.vertices:
+        w = veste.matrix_world @ v.co
+        c, m = classe(w)
+        if c:
+            info[v.index] = (c, w, m)
+    tranches = {}
+    for i, (c, w, m) in info.items():
+        tranches.setdefault((c, int(m[1] / 0.02)), []).append(i)
+    centre = {}
+    rmax = {}
+    for key, ids in tranches.items():
+        cen = sum((info[i][1] for i in ids), Vector()) / len(ids)
+        ax = info[ids[0]][2][3]
+        rs = sorted(((info[i][1] - cen) - ax * (info[i][1] - cen).dot(ax)).length for i in ids)
+        centre[key] = cen
+        rmax[key] = rs[int(len(rs) * 0.9)] if rs else 0.05
+    # 3. amincissement, plis, raccourcissement
+    for i, (c, w, m) in info.items():
+        segs, long, lu, e = bras[c]
+        key = (c, int(m[1] / 0.02))
+        x = m[1] / long
+        ax = m[3]
+        cen = centre[key]
+        r = (w - cen) - ax * (w - cen).dot(ax)
+        rl = r.length
+        if rl < 1e-5:
+            continue
+        f = min(1.0, _profil(x) / max(rmax[key], 1e-4))
+        # transition douce depuis l'aisselle (le haut du bras garde la forme de la veste)
+        t_h = max(0.0, min(1.0, (m[1] - lu * 0.3) / (lu * 0.35)))
+        f = 1.0 + (f - 1.0) * t_h
+        # angle autour du bras (0 = dessus) pour orienter les plis
+        haut = Vector((0, 0, 1)) - ax * ax.z
+        haut = haut.normalized() if haut.length > 1e-4 else Vector((1, 0, 0))
+        cote = ax.cross(haut)
+        th = math.atan2(r.dot(cote), r.dot(haut))
+        ph = 1.7 if c == "r" else 4.1
+        d_coude = (m[1] - lu) / 0.06
+        pli = 0.012 * math.sin(m[1] / 0.055 * math.tau + 2.2 * math.sin(th + ph))
+        # creux du coude (dessous / intérieur) : plis de flexion marqués
+        pli += 0.06 * math.exp(-d_coude * d_coude) * max(0.0, -math.cos(th)) * math.sin(m[1] / 0.022 * math.tau + th)
+        # poignet : manche tassée en accordéon sur 7 cm
+        acc = max(0.0, min(1.0, (m[1] - (long - 0.07)) / 0.07))
+        pli += 0.05 * acc * math.sin(m[1] / 0.018 * math.tau + 1.5 * math.sin(2.0 * th + ph))
+        nr = r * (f * (1.0 + pli))
+        # raccourcie : les 8 derniers centimètres reculent jusqu'à 3,5 cm (manchette du gant visible)
+        recul = 0.035 * max(0.0, min(1.0, (m[1] - (long - 0.08)) / 0.08))
+        nw = cen + ax * (w - cen).dot(ax) + nr - ax * recul
+        veste.data.vertices[i].co = mwi @ nw
+    log("manches amincies avec plis :", len(info), "sommets")
 
 
 # ---------------------------------------------------------------- gants

@@ -85,7 +85,8 @@ func recevoir_tir(degats: float, os_ou_zone, point: Vector3, _normale: Vector3, 
 	FxImpact.poussiere(get_parent(), point, -direction, "tissu")
 	var loc := global_basis.inverse() * direction
 	_vitesse += Vector2(-loc.z, loc.x) * 2.5
-	print("CIBLE ", name, " touchée : ", os_ou_zone, " zone ", zone, " dégâts ", snapped(d, 0.1), " PV ", snapped(pv, 0.1))
+	# pas de print() ici : sous Windows, écrire dans la console bloque l'image ≈ 33 ms (à-coup à chaque balle)
+	print_verbose("CIBLE ", name, " touchée : ", os_ou_zone, " zone ", zone, " dégâts ", snapped(d, 0.1), " PV ", snapped(pv, 0.1))
 	touche.emit(zone, d, pv)
 	if pv <= 0.0 and not _a_terre:
 		_a_terre = true

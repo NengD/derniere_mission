@@ -16,9 +16,14 @@ extends Node3D
 @export var zone := AABB(Vector3(-2, 0, -18), Vector3(4, 3.2, 20))
 @export var ambiance := Color(0.55, 0.6, 0.62)   ## lumière ambiante résiduelle (très faible)
 @export var ambiance_energie := 0.02
-@export var brouillard := 0.02                   ## densité du brouillard volumétrique
+@export var brouillard := 0.025                  ## densité du brouillard volumétrique
 @export var brouillard_couleur := Color(0.62, 0.64, 0.62)
 @export var poussiere_quantite := 1400
+## Lisibilité dans le noir (issue #4) : comme le gain d'une caméra-piéton qui monte dans l'ombre,
+## sans relever les noirs (l'ambiance reste presque nulle) ; les silhouettes se lisent sur les
+## fonds éclairés (contre-jours) et dans la brume autour des sources.
+@export var gain_max := 1600.0                    ## sensibilité maximale de l'exposition auto
+@export var gi_energie := 1.35                    ## rebond VoxelGI (remplit sans déboucher les noirs)
 
 var environnement: Environment
 var monde: WorldEnvironment
@@ -84,7 +89,7 @@ func _ready() -> void:
 	attributs.auto_exposure_scale = _echelle_expo
 	attributs.auto_exposure_speed = 1.1
 	attributs.auto_exposure_min_sensitivity = 40.0
-	attributs.auto_exposure_max_sensitivity = 800.0
+	attributs.auto_exposure_max_sensitivity = gain_max
 	attributs.dof_blur_far_enabled = false
 	attributs.dof_blur_near_enabled = false
 	monde.camera_attributes = attributs
@@ -114,7 +119,7 @@ func cuire_gi(racine: Node) -> void:
 	racine.add_child(gi)
 	gi.global_position = zone.get_center()
 	var d := VoxelGIData.new()
-	d.energy = 1.0
+	d.energy = gi_energie
 	d.propagation = 0.75
 	d.bias = 1.5
 	d.normal_bias = 0.0
@@ -129,6 +134,47 @@ func cuire_gi(racine: Node) -> void:
 	gi.data.use_two_bounces = true
 	gi.data.propagation = d.propagation
 	print("VoxelGI cuit en %d ms" % (Time.get_ticks_msec() - t0))
+
+
+## Brume plus dense dans une zone (fond de couloir, porte, sous un projecteur) : la lumière s'y
+## diffuse et découpe les silhouettes qui passent devant, comme la fumée et la poussière réelles.
+func brume(boite: AABB, densite := 0.06, couleur := Color(0.7, 0.7, 0.68)) -> FogVolume:
+	var f := FogVolume.new()
+	f.size = boite.size
+	f.shape = RenderingServer.FOG_VOLUME_SHAPE_BOX
+	var m := FogMaterial.new()
+	m.density = densite
+	m.albedo = couleur
+	m.edge_fade = 0.6
+	var bruit := FastNoiseLite.new()
+	bruit.frequency = 0.25
+	var tex := NoiseTexture3D.new()
+	tex.noise = bruit
+	tex.width = 32
+	tex.height = 32
+	tex.depth = 32
+	m.density_texture = tex
+	f.material = m
+	add_child(f)
+	f.global_position = boite.get_center()
+	return f
+
+
+## Lumière de rebond sans ombre (sol ou mur éclairé qui renvoie un peu de lumière) : à placer
+## dans les zones de passage trop noires, très faible, pour que les visages et les épaules
+## gardent un modelé sans éclairer les murs voisins.
+func rebond(pos: Vector3, couleur: Color, energie := 0.12, portee := 3.0) -> OmniLight3D:
+	var o := OmniLight3D.new()
+	o.light_color = couleur
+	o.light_energy = energie
+	o.omni_range = portee
+	o.omni_attenuation = 2.0
+	o.shadow_enabled = false
+	o.light_specular = 0.2
+	o.light_volumetric_fog_energy = 0.0
+	add_child(o)
+	o.global_position = pos
+	return o
 
 
 func _poussiere() -> void:

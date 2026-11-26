@@ -43,6 +43,11 @@ const HAUTEUR_DEBOUT := 1.8
 const HAUTEUR_ACCROUPI := 1.15
 const OEIL_DEBOUT := 1.64
 const OEIL_ACCROUPI := 1.08
+## Caméra-piéton fixée sur la poitrine (sternum), sous les yeux et en avant des épaules : la tête (pivot
+## du regard, logique, dégâts) reste aux yeux, seule l'image part de la poitrine. Bras vus par en dessous
+## et en enfilade : seuls avant-bras et mains entrent dans le champ.
+const CAMERA_SOUS_YEUX := 0.15
+const CAMERA_AVANT := 0.14
 const PENCHE := 0.35
 const PENCHE_ROULIS := 11.0        # degrés
 const RAYON := 0.3
@@ -89,7 +94,12 @@ var effet: CameraPieton
 var forme: CollisionShape3D
 var capsule: CapsuleShape3D
 var lumiere_tir: OmniLight3D
-var sprite_tir: Sprite3D
+var sprite_tir: Sprite3D               # flamme vue de face (atlas 2 × 2 de flash_canon.png)
+var flamme_tir: MeshInstance3D         # flamme vue de côté : deux plans croisés le long du canon (atlas flamme_bouche.png)
+var _mat_flamme: StandardMaterial3D
+var _detente := 0.0                   # index droit : 0 le long de la carcasse, 1 sur la détente
+var _prechauffage := false
+var _flash_images := 0                 # images restantes du coup de feu (flamme + lumière : 2 images)
 var chargeur_visuel: MeshInstance3D
 var glissiere: Node3D                  # pièce mobile du glb (recule au tir, bloquée en arrière à vide)
 var chargeur_arme: Node3D              # chargeur engagé (pièce du glb)
@@ -145,6 +155,7 @@ func _ready() -> void:
 	sante.regeneration = float(_reglage("regeneration", 0.0))
 	_base_cam_prec = camera.global_basis
 	_emettre_munitions()
+	_prechauffer.call_deferred()
 
 
 func _exit_tree() -> void:
@@ -153,6 +164,7 @@ func _exit_tree() -> void:
 	_pm_fumee = null
 	_mesh_douille = null
 	_forme_douille = null
+	_tex_impact = null
 	FxImpact.liberer()
 
 
@@ -173,7 +185,7 @@ func _construire() -> void:
 	add_child(tete)
 	recul_n = Node3D.new()
 	recul_n.name = "Recul"
-	recul_n.position = Vector3(0, 0.1, -0.06)
+	recul_n.position = Vector3(0, 0.1 - CAMERA_SOUS_YEUX, -CAMERA_AVANT)
 	tete.add_child(recul_n)
 	camera = Camera3D.new()
 	camera.name = "Camera"
@@ -187,6 +199,7 @@ func _construire() -> void:
 	camera.add_child(porte_arme)
 	pistolet = (load("res://assets/weapons/pistolet.glb") as PackedScene).instantiate()
 	porte_arme.add_child(pistolet)
+	pistolet.scale = Vector3.ONE * ECHELLE_ARME
 	glissiere = pistolet.find_child("glissiere", true, false)
 	chargeur_arme = pistolet.find_child("chargeur", true, false)
 	if glissiere:
@@ -200,6 +213,12 @@ func _construire() -> void:
 	ejection.position = Vector3(0.009, 0.082, -0.056)
 	pistolet.add_child(ejection)
 	_construire_effets_arme()
+	if OS.has_environment("DEBUG_LUMIERE_MAINS"):
+		var l := OmniLight3D.new()
+		l.light_energy = float(OS.get_environment("DEBUG_LUMIERE_MAINS"))
+		l.omni_range = 2.0
+		l.position = Vector3(-0.25, 0.25, -0.2)
+		camera.add_child(l)
 
 	if corps_visible:
 		_construire_corps()
@@ -237,10 +256,91 @@ func _construire_corps() -> void:
 			corps_anim.get_animation(n).loop_mode = Animation.LOOP_LINEAR
 	_jouer_corps("Pistol_Idle", 1.0)
 	_regler_tissus(corps)
+	_ombre_tete()
 	var sk: Skeleton3D = corps.find_children("*", "Skeleton3D", true, false)[0]
 	bras = BrasIK.new()
 	bras.name = "BrasIK"
 	sk.add_child(bras)
+
+
+## Préchauffage (évite l'à-coup au premier tir / premier impact) : sons et textures chargés d'avance,
+## flamme, fumée, douille, poussière et étincelles affichées une fois, invisibles (noires en additif,
+## minuscules), pendant les premières images ; les shaders sont alors compilés pendant le chargement.
+func _prechauffer() -> void:
+	if not is_inside_tree():
+		return
+	for n in ["tir_pistolet_1", "tir_pistolet_2", "tir_pistolet_3", "douille_1", "douille_2", "douille_3",
+			"impact_beton_1", "impact_beton_2", "impact_beton_3", "impact_metal_1", "impact_metal_2",
+			"impact_chair_1", "impact_chair_2", "impact_chair_3", "clic_vide", "chargeur_sortie",
+			"chargeur_entree", "culasse"]:
+		_son(n)
+	if _tex_impact == null:
+		_tex_impact = load("res://assets/fx/impact_balle.png")
+	var devant := camera.global_transform * Vector3(0, 0, -1.0)
+	FxImpact.prechauffer(_monde(), devant)
+	# flamme et lumière : visibles mais éteintes
+	_prechauffage = true
+	sprite_tir.modulate.a = 0.0
+	_mat_flamme.albedo_color = Color(0, 0, 0)
+	sprite_tir.visible = true
+	flamme_tir.visible = true
+	lumiere_tir.light_energy = 0.0
+	lumiere_tir.visible = true
+	# fumée : un émetteur minuscule
+	var f := _particules_fumee()
+	f.amount = 1
+	f.lifetime = 0.3
+	f.local_coords = true
+	add_child(f)
+	f.global_transform = Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * 0.001), devant)
+	f.emitting = true
+	# douille (matériau métal) : minuscule, un instant
+	var d := MeshInstance3D.new()
+	_douille_preparer()
+	d.mesh = _mesh_douille
+	d.scale = Vector3.ONE * 0.001
+	_monde().add_child(d)
+	d.global_position = devant
+	for i in 4:
+		await get_tree().process_frame
+	if not is_instance_valid(self):
+		return
+	f.queue_free()
+	d.queue_free()
+	_prechauffage = false
+	if _flash_images <= 0:
+		sprite_tir.visible = false
+		flamme_tir.visible = false
+		lumiere_tir.visible = false
+
+
+## Ombre du joueur : le corps de Marc (bras compris) projette sa vraie ombre ; la tête et le cou, retirés
+## du modèle (la caméra est là), sont remplacés pour l'ombre seule par une tête et un cou simples, invisibles
+## à l'écran. Sans eux l'ombre au sol est une tache sans tête, informe.
+func _ombre_tete() -> void:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color(0.1, 0.09, 0.08)
+	var t := MeshInstance3D.new()
+	t.name = "OmbreTete"
+	var sp := SphereMesh.new()
+	sp.radius = 0.1
+	sp.height = 0.24
+	sp.radial_segments = 16
+	sp.rings = 8
+	t.mesh = sp
+	t.position = Vector3(0, 0.1, 0.06)
+	var c := MeshInstance3D.new()
+	c.name = "OmbreCou"
+	var cap := CapsuleMesh.new()
+	cap.radius = 0.055
+	cap.height = 0.2
+	c.mesh = cap
+	c.position = Vector3(0, -0.04, 0.07)
+	for mi in [t, c]:
+		mi.material_override = m
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+		mi.layers = CALQUE_VUE_JOUEUR
+		tete.add_child(mi)
 
 
 ## Tissus : reflet spéculaire réduit (un tissu mat ne brille pas en lumière rasante), cuir un peu plus vif.
@@ -255,7 +355,10 @@ func _regler_tissus(n: Node) -> void:
 				m.metallic_specular = 0.12
 				m.roughness = 1.0
 			"Gants":
-				m.metallic_specular = 0.1
+				# cuir noir : albédo cuit trop clair pour l'exposition auto d'un couloir sombre (gris clair
+				# sous la lampe) → assombri ; reflet de cuir étroit et faible (rugosité ≈ 0,45 de la texture)
+				m.albedo_color = Color(0.42, 0.41, 0.4)
+				m.metallic_specular = 0.28
 				m.cull_mode = BaseMaterial3D.CULL_BACK
 			_:
 				m.metallic_specular = 0.3
@@ -263,22 +366,58 @@ func _regler_tissus(n: Node) -> void:
 
 
 func _construire_effets_arme() -> void:
+	# lumière du coup : ponctuelle, chaude, avec ombres, deux images seulement
 	lumiere_tir = OmniLight3D.new()
-	lumiere_tir.light_color = Color(1.0, 0.72, 0.42)
-	lumiere_tir.omni_range = 7.0
+	lumiere_tir.light_color = Color(1.0, 0.66, 0.36)
+	lumiere_tir.omni_range = 6.0
+	lumiere_tir.omni_attenuation = 1.6
 	lumiere_tir.light_energy = 0.0
+	lumiere_tir.light_volumetric_fog_energy = 0.4
 	lumiere_tir.shadow_enabled = true
 	lumiere_tir.position = Vector3(0, 0, -0.05)
+	lumiere_tir.visible = false
 	bouche.add_child(lumiere_tir)
+	# flamme de bouche : petite fleur de gaz chauds (pas d'étoile), additive, variante tirée au hasard
 	sprite_tir = Sprite3D.new()
 	sprite_tir.texture = load("res://assets/fx/flash_canon.png")
+	sprite_tir.region_enabled = true
+	sprite_tir.region_rect = Rect2(0, 0, 256, 256)
 	sprite_tir.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	sprite_tir.pixel_size = 0.00034
+	sprite_tir.pixel_size = 0.00022
 	sprite_tir.shaded = false
-	sprite_tir.modulate = Color(1, 0.9, 0.72, 1)
-	sprite_tir.position = Vector3(0, 0, -0.06)
+	sprite_tir.double_sided = true
+	sprite_tir.alpha_cut = SpriteBase3D.ALPHA_CUT_DISABLED
+	sprite_tir.modulate = Color(1, 0.9, 0.75, 0.9)
+	sprite_tir.position = Vector3(0, 0, -0.012)
 	sprite_tir.visible = false
 	bouche.add_child(sprite_tir)
+	_mat_flamme = StandardMaterial3D.new()
+	_mat_flamme.albedo_texture = load("res://assets/fx/flamme_bouche.png")
+	_mat_flamme.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_mat_flamme.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	_mat_flamme.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_mat_flamme.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_mat_flamme.uv1_scale = Vector3(1, 0.25, 1)
+	_mat_flamme.albedo_color = Color(1.6, 1.4, 1.2)
+	var am := ArrayMesh.new()
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	# deux plans croisés le long de -Z (u = 0 à la bouche), 9 cm de long, 2,4 cm de large
+	for k in 2:
+		var lat := Vector3(0.012, 0, 0) if k == 0 else Vector3(0, 0.012, 0)
+		var av := Vector3(0, 0, -0.09)
+		var c := [-lat, -lat + av, lat + av, lat]
+		var uv := [Vector2(0, 1), Vector2(1, 1), Vector2(1, 0), Vector2(0, 0)]
+		for i in [0, 1, 2, 0, 2, 3]:
+			st.set_uv(uv[i])
+			st.add_vertex(c[i])
+	st.commit(am)
+	flamme_tir = MeshInstance3D.new()
+	flamme_tir.mesh = am
+	flamme_tir.material_override = _mat_flamme
+	flamme_tir.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	flamme_tir.visible = false
+	bouche.add_child(flamme_tir)
 	# fumée : trois émetteurs utilisés à tour de rôle
 	for i in 3:
 		var p := _particules_fumee()
@@ -609,6 +748,7 @@ func angle_dispersion() -> float:
 func _tir() -> void:
 	var ang := angle_dispersion()
 	_depuis_tir = 0.0
+	_detente = 1.0
 	_chaleur += 1.0
 	var base := camera.global_basis
 	var dir := Dispersion.direction(base, ang, _rng.randf(), _rng.randf())
@@ -640,12 +780,9 @@ func _tir() -> void:
 	_coup_arme = 1.0
 	_recul_lateral = _rng.randf_range(-1.0, 1.0)
 	_secousse = max(_secousse, 0.35)
-	lumiere_tir.light_energy = 7.0
-	sprite_tir.visible = true
-	sprite_tir.rotation.z = _rng.randf() * TAU
-	sprite_tir.scale = Vector3.ONE * _rng.randf_range(0.8, 1.25)
+	_allumer_flamme()
 	if effet:
-		effet.eblouir(0.07)
+		effet.eblouir(0.012)   # à peine : la lumière ponctuelle éclaire déjà la pièce, l'image ne doit pas blanchir
 	var f := _fumees[_fumee_i]
 	_fumee_i = (_fumee_i + 1) % _fumees.size()
 	f.global_transform = bouche.global_transform
@@ -685,7 +822,9 @@ func _impact(point: Vector3, normale: Vector3, col: Object) -> void:
 
 func _decalque(point: Vector3, normale: Vector3) -> void:
 	var d := Decal.new()
-	d.texture_albedo = load("res://assets/fx/impact_balle.png")
+	if _tex_impact == null:
+		_tex_impact = load("res://assets/fx/impact_balle.png")   # gardée : sinon relue sur le disque à chaque balle
+	d.texture_albedo = _tex_impact
 	var t := _rng.randf_range(0.05, 0.075)
 	d.size = Vector3(t, 0.06, t)
 	d.cull_mask = 1
@@ -703,19 +842,12 @@ func _decalque(point: Vector3, normale: Vector3) -> void:
 			v.queue_free()
 
 
+static var _tex_impact: Texture2D
 static var _mesh_douille: CylinderMesh
 static var _forme_douille: CylinderShape3D
 
 
-## Douille éjectée (ou cartouche entière lors d'un désenrayage).
-func _douille(cartouche: bool) -> void:
-	var rb := RigidBody3D.new()
-	rb.collision_layer = 0
-	rb.collision_mask = COUCHE_MONDE
-	rb.mass = 0.012
-	rb.continuous_cd = true
-	rb.contact_monitor = true
-	rb.max_contacts_reported = 1
+func _douille_preparer() -> void:
 	if _mesh_douille == null:
 		_mesh_douille = CylinderMesh.new()
 		_mesh_douille.top_radius = 0.0046
@@ -731,6 +863,18 @@ func _douille(cartouche: bool) -> void:
 		_forme_douille = CylinderShape3D.new()
 		_forme_douille.radius = 0.005
 		_forme_douille.height = 0.02
+
+
+## Douille éjectée (ou cartouche entière lors d'un désenrayage).
+func _douille(cartouche: bool) -> void:
+	var rb := RigidBody3D.new()
+	rb.collision_layer = 0
+	rb.collision_mask = COUCHE_MONDE
+	rb.mass = 0.012
+	rb.continuous_cd = true
+	rb.contact_monitor = true
+	rb.max_contacts_reported = 1
+	_douille_preparer()
 	var mi := MeshInstance3D.new()
 	mi.mesh = _mesh_douille
 	if cartouche:
@@ -1050,6 +1194,7 @@ func _process(delta: float) -> void:
 	var sy := (_rng.randf() - 0.5) * sac * 2.2
 	var r_bob := Vector2(sin(_phase_pas * 2.0) * 0.35, sin(_phase_pas) * 0.3) * amp
 	recul_n.rotation_degrees = Vector3(_recul.x + _coup_tete.x + sx + r_bob.x, _recul.y + _coup_tete.y + sy + r_bob.y, sx * 0.6 + sin(_phase_pas) * 0.5 * amp)
+	_placer_camera()
 
 	_pose_arme(delta, v)
 	_maj_glissiere(delta)
@@ -1058,15 +1203,54 @@ func _process(delta: float) -> void:
 		chargeur_arme.visible = _chargeur_engage_visible()
 	_maj_effet(delta)
 
-	# flash de bouche : une image
-	lumiere_tir.light_energy = max(0.0, lumiere_tir.light_energy - delta * 140.0)
-	if sprite_tir.visible and lumiere_tir.light_energy < 3.0:
-		sprite_tir.visible = false
+	_maj_flamme()
+
+
+## Caméra sur la poitrine : son décalage sous les yeux suit le lacet et le penché mais PAS le tangage
+## (elle est fixée au buste, pas à la tête) ; en regardant vers le bas elle avance avec la poitrine qui se
+## penche, pour ne jamais entrer dans la veste.
+func _placer_camera() -> void:
+	var bas: float = max(0.0, -sin(tangage))
+	var dec := Vector3(0, 0.1 - CAMERA_SOUS_YEUX + bas * 0.05, -CAMERA_AVANT - bas * 0.1)
+	var sans_tangage := Basis(Vector3.BACK, tete.rotation.z)
+	recul_n.position = tete.basis.inverse() * (sans_tangage * dec)
+
+
+## Coup de feu : flamme (variante au hasard) et lumière visibles deux images rendues, la seconde plus faible
+## (allumées par _maj_flamme dans _process, juste avant le rendu).
+func _allumer_flamme() -> void:
+	_flash_images = 2
+	var v := _rng.randi() % 4
+	sprite_tir.region_rect = Rect2((v % 2) * 256, (v / 2) * 256, 256, 256)
+	sprite_tir.rotation.z = _rng.randf() * TAU
+	sprite_tir.scale = Vector3.ONE * _rng.randf_range(0.75, 1.2)
+	_mat_flamme.uv1_offset = Vector3(0, (_rng.randi() % 4) * 0.25, 0)
+	flamme_tir.rotation.z = _rng.randf_range(-0.6, 0.6)
+	flamme_tir.scale = Vector3(_rng.randf_range(0.8, 1.15), _rng.randf_range(0.8, 1.15), _rng.randf_range(0.7, 1.2))
+
+
+func _maj_flamme() -> void:
+	if _prechauffage and _flash_images <= 0:
+		return
+	var on := _flash_images > 0
+	lumiere_tir.visible = on
+	sprite_tir.visible = on
+	flamme_tir.visible = on
+	if on:
+		var fort := _flash_images == 2
+		lumiere_tir.light_energy = 1.8 if fort else 0.6
+		sprite_tir.modulate.a = 0.9 if fort else 0.35
+		_mat_flamme.albedo_color = Color(1.6, 1.4, 1.2) if fort else Color(0.5, 0.42, 0.35)
+		_flash_images -= 1
 
 
 ## Arme tenue bras tendus devant la poitrine (caméra-piéton) : visée = organes de visée sur l'axe.
-const VISEE := Vector3(0.0, -0.097, -0.41)
-const HANCHE := Vector3(0.06, -0.20, -0.385)
+## Prise à deux mains devant la poitrine : l'arme à ≈ 40 cm de la caméra de poitrine, sous l'axe (on voit
+## le dessus de la glissière et les mains), coudes ouverts hors champ, avant-bras qui entrent par les coins bas.
+const VISEE := Vector3(0.0, -0.14, -0.38)
+const HANCHE := Vector3(0.04, -0.22, -0.34)
+## Échelle du pistolet (modèle à 18,8 cm → ≈ 19,7 cm, proche d'un Glock 17 réel de 18,6 à 20,2 cm)
+const ECHELLE_ARME := 1.05
 
 
 ## Pose procédurale de l'arme dans le repère de la caméra.
@@ -1082,9 +1266,9 @@ func _pose_arme(delta: float, v: float) -> void:
 	if _rech_t >= 0.0:
 		var u: float = clamp(_rech_t / _rech_duree, 0.0, 1.0)
 		var w: float = _lisse(clamp(u / 0.15, 0.0, 1.0)) * _lisse(clamp((1.0 - u) / 0.15, 0.0, 1.0))
-		var rech := Transform3D(Basis.from_euler(Vector3(deg_to_rad(22), deg_to_rad(-10), deg_to_rad(30))), Vector3(0.04, -0.13, -0.33))
+		var rech := Transform3D(Basis.from_euler(Vector3(deg_to_rad(18), deg_to_rad(-8), deg_to_rad(28))), Vector3(0.03, -0.075, -0.33))
 		if _rech_action == "desenrayer":
-			rech = Transform3D(Basis.from_euler(Vector3(deg_to_rad(14), deg_to_rad(-6), deg_to_rad(55))), Vector3(0.04, -0.14, -0.34))
+			rech = Transform3D(Basis.from_euler(Vector3(deg_to_rad(12), deg_to_rad(-6), deg_to_rad(50))), Vector3(0.03, -0.085, -0.34))
 		var secoue := 0.0
 		for e in _rech_reperes():
 			secoue += exp(-pow((u - e) * 30.0, 2.0))
@@ -1191,12 +1375,15 @@ static func main_droite() -> Transform3D:
 	return Transform3D(Basis(x, y, x.cross(y)), Vector3(0.024, 0.035, 0.088))
 
 
-## main gauche (soutien) : X = paume, Y = vers les doigts, Z = pouce
+## main gauche (soutien) : X = paume, Y = vers les doigts, Z = pouce.
+## Paume plaquée sur le flanc gauche de la poignée par-dessus les doigts droits, doigts qui descendent
+## en enveloppant l'avant de la poignée sous le pontet, pouce le long de la carcasse pointé vers l'avant.
 static func main_gauche() -> Transform3D:
-	var y := Vector3(0.3, -0.32, -0.9).normalized()
-	var x := Vector3(0.94, 0.15, 0.3)
-	x = (x - y * x.dot(y)).normalized()
-	return Transform3D(Basis(x, y, x.cross(y)), Vector3(-0.048, 0.004, 0.055))
+	var p := Vector3(-0.05, 0.03, 0.055)
+	var y := Vector3(0.45, -0.6, -0.65).normalized()
+	var z := Vector3(0.05, 0.3, -1.0)
+	z = (z - y * z.dot(y)).normalized()
+	return Transform3D(Basis(y.cross(z), y, z), p)
 
 
 ## Chargeur tenu dans la main gauche (repère de la main : X paume, Y doigts, Z pouce) :
@@ -1211,11 +1398,14 @@ func _main_gauche_rechargement(normale: Transform3D) -> Transform3D:
 	# sous la poignée, tenant le chargeur
 	# main qui présente le chargeur sous la poignée (déduite de la prise du chargeur dans la main)
 	var puits := arme_g * _chargeur_dans_arme(0.05) * CHARGEUR_EN_MAIN.affine_inverse()
-	# à la ceinture (poche à chargeurs), repère caméra
-	var y_c := Vector3(0.1, -0.9, -0.4).normalized()
-	var x_c := Vector3(1, 0, 0)
-	x_c = (x_c - y_c * x_c.dot(y_c)).normalized()
-	var poche := camera.global_transform * Transform3D(Basis(x_c, y_c, x_c.cross(y_c)), Vector3(-0.16, -0.55, -0.08))
+	# poche à chargeurs à la ceinture, côté gauche, repère du CORPS (ne suit pas le regard) : la main y
+	# descend par l'avant, paume vers le ventre, doigts vers le bas, sans traverser la veste ni la poche
+	var corps_t := Transform3D(global_basis, global_position)
+	var poche := corps_t * Transform3D(Basis(Vector3(0, 0, 1), Vector3(0, -1, 0), Vector3(1, 0, 0)), Vector3(-0.15, 1.06, -0.2))
+	var y_d := Vector3(0.15, -0.75, -0.65).normalized()
+	var z_d := Vector3(1, 0, 0)
+	z_d = (z_d - y_d * z_d.dot(y_d)).normalized()
+	var devant := corps_t * Transform3D(Basis(y_d.cross(z_d), y_d, z_d), Vector3(-0.15, 1.18, -0.36))
 	# sur la culasse (dessus de l'arme)
 	var y_s := Vector3(0.55, -0.1, -0.83).normalized()
 	var x_s := Vector3(0.3, -0.95, 0.0)
@@ -1227,9 +1417,9 @@ func _main_gauche_rechargement(normale: Transform3D) -> Transform3D:
 		"desenrayer":
 			cles = [[0.0, normale], [0.1, puits], [0.2, puits], [0.32, culasse], [0.45, culasse_tiree], [0.55, culasse], [0.8, normale]]
 		"recharger_vide":
-			cles = [[0.0, normale], [0.14, normale], [0.32, poche], [0.42, poche], [0.54, puits], [0.6, puits], [0.7, culasse], [0.8, culasse_tiree], [0.86, culasse], [1.0, normale]]
+			cles = [[0.0, normale], [0.12, normale], [0.2, devant], [0.3, poche], [0.38, poche], [0.46, devant], [0.54, puits], [0.6, puits], [0.7, culasse], [0.8, culasse_tiree], [0.86, culasse], [1.0, normale]]
 		_:
-			cles = [[0.0, normale], [0.12, puits], [0.3, poche], [0.42, poche], [0.6, puits], [0.7, puits], [0.86, normale]]
+			cles = [[0.0, normale], [0.12, puits], [0.2, devant], [0.3, poche], [0.4, poche], [0.5, devant], [0.6, puits], [0.7, puits], [0.86, normale]]
 	return _interp_cles(cles, u)
 
 
@@ -1261,18 +1451,28 @@ func _maj_corps(delta: float, v: float) -> void:
 		x_c = (x_c - y_c * x_c.dot(y_c)).normalized()
 		var poitrine := camera.global_transform * Transform3D(Basis(x_c, y_c, x_c.cross(y_c)), Vector3(-0.05, -0.42, -0.12))
 		cible_g = cible_g.interpolate_with(poitrine, _lisse(_soin_t / 0.4))
+	# index sur la détente seulement pour tirer (doigt tenu, ou juste après un coup), sinon le long de la carcasse
+	var veut := 1.0 if (_tenu("tirer") or _depuis_tir < 0.35) and _rech_t < 0.0 and _soin_t < 0.0 else 0.0
+	_detente = move_toward(_detente, veut, delta * (14.0 if veut > _detente else 5.0))
+	bras.detente = _lisse(_detente)
 	bras.cible_d = cible_d
 	bras.cible_g = cible_g
 	bras.actif_d = true
 	bras.actif_g = true
-	bras.pole_d = camera.global_transform * Vector3(0.55, -0.75, 0.25)
-	bras.pole_g = camera.global_transform * Vector3(-0.55, -0.8, 0.2)
+	var pole := Vector3(1.0, -0.7, 0.2)   # coudes ouverts sur les côtés : avant-bras qui convergent, mains visibles
+	bras.pole_d = camera.global_transform * pole
+	var pole_g := Vector3(-pole.x, pole.y - 0.05, pole.z - 0.05)
+	if _rech_t >= 0.0:
+		# rechargement : coude gauche bas, l'avant-bras passe sous la caméra au lieu de la masquer
+		var ur: float = clamp(_rech_t / _rech_duree, 0.0, 1.0)
+		pole_g = pole_g.lerp(Vector3(-0.5, -1.4, -0.1), _lisse(ur / 0.12) * _lisse((1.0 - ur) / 0.12))
+	bras.pole_g = camera.global_transform * pole_g
 	bras.tangage = tangage
 	bras.roulis = asin(clamp(penche / 0.7, -0.9, 0.9))
 	# corps recalé à l'horizontale pour que le milieu des épaules soit juste sous et derrière les yeux
 	# (quelle que soit l'animation des jambes, le penché ou le buste plié)
 	if bras.epaules_valides:
-		var voulu := tete.global_position + global_basis * Vector3(0, -0.17, 0.04)
+		var voulu := tete.global_position + global_basis * Vector3(0, -0.11, 0.04)   # épaules ≈ 21 cm sous les yeux, 4 cm derrière (caméra 18 cm devant elles)
 		var ecart := global_basis.inverse() * (voulu - bras.epaules)
 		var pos := corps.position + ecart * (1.0 - exp(-20.0 * delta))
 		pos.x = clamp(pos.x, -0.5, 0.5)

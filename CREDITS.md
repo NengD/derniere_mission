@@ -32,7 +32,7 @@ Toutes les ressources sont gratuites et utilisables dans l'Union européenne. Ch
 | Modèles « Lightbulb 01 », « Pull Chain Light Socket », « Industrial Caged Sconce », « Security Light » | Poly Haven | CC0 | https://polyhaven.com/models | ampoules nues, lampes de sécurité et projecteur extérieur (`assets/decor/models/`, `scripts/rendu/lampe.gd`) |
 | Pistolet générique (`assets/weapons/pistolet.glb`) | Créé pour ce projet (Claude, Blender : `tools/blender/build_pistol.py` ; textures PBR procédurales cuites par Cycles, aucune ressource externe) | Libre de droits | — | arme du joueur et du garde |
 | Police « Inter » (fournie avec Blender) | Rasmus Andersson | SIL Open Font License 1.1 | https://rsms.me/inter/ | marquages gravés du pistolet (glyphes convertis en relief) |
-| Sang, flaque, tag du cartel, flash de bouche (`assets/fx/`) | Créés pour ce projet (Claude, `tools/make_fx_textures.py`) | Libre de droits | — | effets |
+| Sang, flaque, tag du cartel, flammes de bouche (`flash_canon.png`, `flamme_bouche.png`), fumée, impact (`assets/fx/`) | Créés pour ce projet (Claude, `tools/make_fx_textures.py`) | Libre de droits | — | effets |
 | Effet caméra-piéton (`shaders/camera_pieton.gdshader`) | Créé pour ce projet (Claude) | Libre de droits | — | image du jeu |
 | « The Free Firearm Sound Library » (Walther PPQ, Bersa) | Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney | CC0 | https://opengameart.org/content/the-free-firearm-sound-library | tirs du pistolet (proche / lointain) et des gardes (`assets/sons/tir_*`) |
 | « Gun Reload Sound Effects » | BMacZero | CC0 | https://opengameart.org/content/gun-reload-sound-effects | chargeur et culasse |

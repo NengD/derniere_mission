@@ -19,18 +19,35 @@ var actif_g := false
 var tangage := 0.0                   # radians, positif = regard vers le haut
 var part_tangage := 0.45             # part du tangage reprise par le buste
 var roulis := 0.0                    # radians, positif = penché à droite
-var equerre := 0.9                   # part de la torsion des épaules corrigée
+var equerre := 1.0                   # part de la torsion des épaules corrigée
 ## milieu des épaules après modification (global), lu par le joueur pour recaler le corps
 var epaules := Vector3.ZERO
 var epaules_valides := false
 var cacher_tete := true
+## mains MakeHuman un peu grandes (≈ 20 cm du poignet au bout du majeur) → ≈ 19 cm, taille d'une main d'homme
+var echelle_mains := 0.95
 var axe_doigts := Vector3(0, 0, 1)   # axe de flexion des phalanges (repère local de l'os)
-## flexion de chaque doigt (0 = tendu, 1 = serré), main droite puis gauche
-var doigts_d := {"index": 0.3, "middle": 1.0, "ring": 1.0, "pinky": 1.0, "thumb": 0.6}
-var doigts_g := {"index": 0.85, "middle": 0.95, "ring": 1.0, "pinky": 1.0, "thumb": 0.3}
+## Doigts posés à partir de la pose de repos (l'animation tient le pistolet main ouverte, doigts écartés :
+## « griffes ») : doigts rapprochés (écart de repos annulé), puis fléchis.
+## flexion de chaque doigt (0 = tendu, 1 = serré autour de la poignée), main droite puis gauche
+var doigts_d := {"index": 0.0, "middle": 1.0, "ring": 1.05, "pinky": 1.1, "thumb": 1.0}
+var doigts_g := {"index": 0.9, "middle": 0.95, "ring": 1.0, "pinky": 1.05, "thumb": 1.0}
+## index droit : 0 = tendu le long de la carcasse au-dessus du pontet, 1 = sur la détente
+var detente := 0.0
 
-const ANGLES := {"01": 50.0, "02": 80.0, "03": 55.0}
-const POUCE := {"01": 12.0, "02": 25.0, "03": 30.0}
+## angles de flexion des phalanges 01, 02, 03 pour une flexion de 1 (degrés)
+const ANGLES := {"01": 62.0, "02": 78.0, "03": 42.0}
+## index droit le long de la carcasse / sur la détente
+const INDEX_LONG := {"01": 8.0, "02": 6.0, "03": 4.0}
+const INDEX_DETENTE := {"01": 38.0, "02": 52.0, "03": 22.0}
+## pouces (flexion des trois phalanges, degrés ; « ouv » = écartement de la première autour de son axe X)
+## droit : allongé sur le flanc gauche de la carcasse, pointé vers l'avant (prise pouces en avant) ;
+## gauche : à plat sur le flanc, sous la glissière, pointé vers l'avant
+## première phalange : rotations x, y, z (degrés, repère local de l'os, appliquées sur la pose de repos)
+var pouce_d := {"x": 0.0, "y": 0.0, "z": 40.0, "02": 4.0, "03": 2.0}
+var pouce_g := {"x": 0.0, "y": 0.0, "z": 0.0, "02": -4.0, "03": 0.0}
+
+var _ecart := {}
 
 var _os := {}
 
@@ -58,8 +75,10 @@ func _process_modification() -> void:
 		epaules_valides = true
 	var inv := sk.global_transform.affine_inverse()
 	if actif_d:
+		_epaule(sk, "r", inv * cible_d)
 		_bras(sk, "r", inv * cible_d, inv * pole_d)
 	if actif_g:
+		_epaule(sk, "l", inv * cible_g)
 		_bras(sk, "l", inv * cible_g, inv * pole_g)
 	_doigts(sk, "r", doigts_d)
 	_doigts(sk, "l", doigts_g)
@@ -87,6 +106,32 @@ func _buste(sk: Skeleton3D) -> void:
 		var ang := atan2(v.z, v.x)
 		var gp := sk.get_bone_global_pose(i3)
 		sk.set_bone_global_pose(i3, Transform3D(Basis(Vector3.UP, ang * equerre) * gp.basis, gp.origin))
+
+
+## Épaule avancée (protraction de la clavicule) quand la main est loin : bras tendus vers l'arme,
+## l'épaule suit au lieu de laisser le poignet décroché de sa cible.
+func _epaule(sk: Skeleton3D, cote: String, cible: Transform3D) -> void:
+	var ic := _os_i("clavicle_" + cote)
+	var iu := _os_i("upperarm_" + cote)
+	var il := _os_i("lowerarm_" + cote)
+	var ih := _os_i("hand_" + cote)
+	if ic < 0 or iu < 0 or il < 0 or ih < 0:
+		return
+	var gc := sk.get_bone_global_pose(ic)
+	var s := sk.get_bone_global_pose(iu).origin
+	var portee := s.distance_to(sk.get_bone_global_pose(il).origin) + sk.get_bone_global_pose(il).origin.distance_to(sk.get_bone_global_pose(ih).origin)
+	var exces := s.distance_to(cible.origin) - portee * 0.985
+	if exces <= 0.0:
+		return
+	var v := s - gc.origin
+	var w := cible.origin - gc.origin
+	var axe := v.cross(w)
+	if axe.length() < 1e-5:
+		return
+	# angle qui rapproche l'épaule de la cible d'environ l'excès (plafonné à 28°)
+	var ang: float = min(exces / max(v.length(), 0.05), deg_to_rad(28.0))
+	ang = min(ang, v.angle_to(w))
+	sk.set_bone_global_pose(ic, Transform3D(Basis(axe.normalized(), ang) * gc.basis, gc.origin))
 
 
 func _bras(sk: Skeleton3D, cote: String, cible: Transform3D, pole: Vector3) -> void:
@@ -133,21 +178,50 @@ func _bras(sk: Skeleton3D, cote: String, cible: Transform3D, pole: Vector3) -> v
 		bl = Basis(f, tw * 0.5) * bl
 	sk.set_bone_global_pose(il, Transform3D(bl.scaled_local(gl.basis.get_scale()), coude))
 	var o := sk.get_bone_global_pose(ih).origin
-	sk.set_bone_global_pose(ih, Transform3D(cible.basis.orthonormalized().scaled_local(gh.basis.get_scale()), o))
+	sk.set_bone_global_pose(ih, Transform3D(cible.basis.orthonormalized().scaled_local(gh.basis.get_scale() * echelle_mains), o))
+
+
+## Écart de repos de chaque doigt par rapport au majeur, autour de l'axe X local de la phalange 01.
+func _ecart_repos(sk: Skeleton3D, f: String, cote: String) -> float:
+	var cle := f + cote
+	if _ecart.has(cle):
+		return _ecart[cle]
+	var a := 0.0
+	var i := _os_i("%s_01_%s" % [f, cote])
+	var m := _os_i("middle_01_" + cote)
+	if i >= 0 and m >= 0 and f != "middle":
+		var bf := sk.get_bone_global_rest(i).basis.orthonormalized()
+		var dm := sk.get_bone_global_rest(m).basis.y.normalized()
+		var l := bf.inverse() * dm
+		a = atan2(l.z, l.y)
+	_ecart[cle] = a
+	return a
 
 
 func _doigts(sk: Skeleton3D, cote: String, flex: Dictionary) -> void:
-	var signe := 1.0 if cote == "r" else -1.0
 	for f in ["index", "middle", "ring", "pinky"]:
 		var c: float = flex.get(f, 1.0)
+		var ecart := _ecart_repos(sk, f, cote) * 0.85
 		for k in ANGLES:
 			var i := _os_i("%s_%s_%s" % [f, k, cote])
-			if i >= 0:
-				var q := sk.get_bone_pose_rotation(i)
-				sk.set_bone_pose_rotation(i, q * Quaternion(axe_doigts, deg_to_rad(ANGLES[k] * c)))
-	var cp: float = flex.get("thumb", 0.5)
-	for k in POUCE:
+			if i < 0:
+				continue
+			var ang: float = ANGLES[k] * c
+			if f == "index" and cote == "r":
+				ang = lerp(float(INDEX_LONG[k]), float(INDEX_DETENTE[k]), detente)
+			var q := sk.get_bone_rest(i).basis.get_rotation_quaternion()
+			if k == "01":
+				q = q * Quaternion(Vector3.RIGHT, ecart)
+			sk.set_bone_pose_rotation(i, q * Quaternion(axe_doigts, deg_to_rad(ang)))
+	var pc: Dictionary = pouce_d if cote == "r" else pouce_g
+	var cp: float = flex.get("thumb", 1.0)
+	for k in ["01", "02", "03"]:
 		var i := _os_i("thumb_%s_%s" % [k, cote])
-		if i >= 0:
-			var q := sk.get_bone_pose_rotation(i)
-			sk.set_bone_pose_rotation(i, q * Quaternion(Vector3(0, 0, 1), deg_to_rad(POUCE[k] * cp * signe)))
+		if i < 0:
+			continue
+		var q := sk.get_bone_rest(i).basis.get_rotation_quaternion()
+		if k == "01":
+			q = q * Quaternion.from_euler(Vector3(deg_to_rad(float(pc["x"])), deg_to_rad(float(pc["y"])), deg_to_rad(float(pc["z"]) * cp)))
+		else:
+			q = q * Quaternion(axe_doigts, deg_to_rad(float(pc[k]) * cp))
+		sk.set_bone_pose_rotation(i, q)

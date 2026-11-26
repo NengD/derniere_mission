@@ -46,6 +46,27 @@ static func poussiere(parent: Node, point: Vector3, normale: Vector3, materiau :
 	p.get_tree().create_timer(p.lifetime + 0.5).timeout.connect(p.queue_free)
 
 
+## Préchauffage au chargement : un émetteur de chaque sorte, minuscule, devant la caméra pendant quelques
+## images, pour que les shaders des particules soient compilés avant le premier tir (sinon la première
+## balle qui touche le décor ou un mannequin fige l'image ≈ 50 à 150 ms).
+static func prechauffer(parent: Node, point: Vector3) -> void:
+	if parent == null or not parent.is_inside_tree():
+		return
+	_preparer()
+	for pm in [[_pm_poussiere, _quad_poussiere], [_pm_etincelles, _mesh_etincelle]]:
+		var p := GPUParticles3D.new()
+		p.one_shot = true
+		p.amount = 2
+		p.lifetime = 0.3
+		p.local_coords = true
+		p.process_material = pm[0]
+		p.draw_pass_1 = pm[1]
+		parent.add_child(p)
+		p.global_transform = Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * 0.001), point)
+		p.emitting = true
+		p.get_tree().create_timer(0.6).timeout.connect(p.queue_free)
+
+
 static func liberer() -> void:
 	_pm_poussiere = null
 	_pm_etincelles = null

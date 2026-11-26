@@ -45,6 +45,8 @@ func _ready() -> void:
 		_perf = MesurePerf.new()
 		_perf.etiquette = "salle_test parcours video"
 		add_child(_perf)
+		if OS.has_environment("TRACE_IMAGES"):
+			add_child(preload("res://scripts/test/trace_images.gd").new())
 	_environnement()
 	_couloir()
 	_objets()
@@ -61,7 +63,7 @@ func _ready() -> void:
 	joueur.effet.saccades = mode != "photo" and mode != "perf"
 	if mode == "jeu":
 		joueur.effet.sous_titre(tr("TEST_AIDE"), 6.0)
-	if mode == "photo" and (vue == "plan" or vue == "mains"):
+	if mode == "photo" and (vue == "plan" or vue == "mains" or (vue == "recharge" and sortie.contains("plan"))):
 		_cam_ext = Camera3D.new()
 		_cam_ext.fov = 50 if vue == "plan" else 35
 		_cam_ext.near = 0.02
@@ -229,17 +231,39 @@ func _lumieres() -> void:
 	r.rotation_degrees.y = -90
 	var v := _lampe("securite_verte", Vector3(W / 2 - 0.6, H - 0.35, Z1 + 0.02))
 	v.rotation_degrees.y = 180
-	# sodium de la rue qui filtre sous le rideau métallique
-	var ext := SpotLight3D.new()
-	ext.position = Vector3(0, 0.25, Z1 + 0.25)
-	ext.rotation_degrees = Vector3(-6, 0, 0)
-	ext.spot_angle = 65
-	ext.spot_range = 10
-	ext.light_energy = 2.5
-	ext.light_color = Color(1.0, 0.55, 0.18)
-	ext.light_volumetric_fog_energy = 3.0
-	ext.shadow_enabled = true
-	add_child(ext)
+	# contre-jours (issue #4) : le fond du couloir est la zone la plus claire du champ, pour que
+	# quiconque s'y tient se détache en silhouette. Sodium de la rue qui filtre sous le rideau
+	# métallique et rase le sol vers le joueur (longues ombres des jambes, brume éclairée)…
+	var sodium := Color(1.0, 0.55, 0.18)
+	var fuite := SpotLight3D.new()
+	fuite.position = Vector3(0, 0.1, Z1 + 0.15)
+	fuite.rotation_degrees = Vector3(-3, 180, 0)
+	fuite.spot_angle = 55
+	fuite.spot_angle_attenuation = 0.8
+	fuite.spot_range = 11
+	fuite.spot_attenuation = 1.1
+	fuite.light_energy = 3.6
+	fuite.light_color = sodium
+	fuite.light_volumetric_fog_energy = 4.0
+	fuite.shadow_enabled = true
+	fuite.shadow_blur = 1.5
+	add_child(fuite)
+	# … et le rideau lui-même, éclairé par la fente du bas (fond clair derrière les silhouettes)
+	var rideau := SpotLight3D.new()
+	rideau.position = Vector3(0, 0.15, Z1 + 0.9)
+	rideau.rotation_degrees = Vector3(28, 0, 0)
+	rideau.spot_angle = 60
+	rideau.spot_range = 3.5
+	rideau.light_energy = 1.6
+	rideau.light_color = sodium
+	rideau.light_volumetric_fog_energy = 0.0
+	rideau.light_specular = 0.3
+	add_child(rideau)
+	# poussière plus dense devant le rideau : la lumière rasante s'y diffuse
+	rendu.brume(AABB(Vector3(-W / 2, 0, Z1), Vector3(W, 2.0, 3.6)), 0.07, Color(0.75, 0.72, 0.66))
+	# rebond du sol éclairé, très faible : modelé des épaules et des visages sans éclairer les murs
+	rendu.rebond(Vector3(0, 0.25, Z1 + 2.5), sodium.lerp(Color.WHITE, 0.3), 0.12, 3.0)
+	rendu.rebond(Vector3(-0.2, 0.3, -7.8), Color(0.8, 0.95, 0.85), 0.06, 2.6)
 
 
 func _lampe(type: String, pos: Vector3, panne := "aucune") -> Lampe:
@@ -261,6 +285,64 @@ func _cibles() -> void:
 		c.rotation_degrees.y = [-8.0, 12.0, 0.0][i]
 		add_child(c)
 		cibles.append(c)
+	# deux gardes réalistes immobiles (sans IA, sans collision) pour juger la lisibilité :
+	# l'un dans la zone sombre près du poteau, l'autre en contre-jour devant le rideau métallique
+	_garde("garde_2", Vector3(-0.95, 0, -7.6), 18.0, "Pistol_Idle")
+	_garde("garde_3", Vector3(-0.25, 0, -14.3), -4.0, "Pistol_Aim_Neutral")
+
+
+var gardes: Array[Node3D] = []
+var _prises: Array = []
+
+
+func _garde(nom: String, pos: Vector3, rot_y: float, anim: String) -> void:
+	var chemin := "res://assets/characters/gardes/%s.glb" % nom
+	if not ResourceLoader.exists(chemin):
+		return
+	var g: Node3D = (load(chemin) as PackedScene).instantiate()
+	g.name = nom
+	g.position = pos
+	g.rotation_degrees.y = rot_y
+	add_child(g)
+	gardes.append(g)
+	var ap: AnimationPlayer = g.find_children("*", "AnimationPlayer", true, false)[0]
+	for n in ["Pistol_Idle", "Pistol_Aim_Neutral"]:
+		if ap.has_animation(n):
+			ap.get_animation(n).loop_mode = Animation.LOOP_LINEAR
+	ap.play("Pistol_Aim_Neutral")   # pose de visée d'abord, pour caler l'arme dans la main
+	var sk: Skeleton3D = g.find_children("*", "Skeleton3D", true, false)[0]
+	var fc := FingerCurl.new()
+	fc.axis = Vector3(0, 0, 1)
+	sk.add_child(fc)
+	var ba := BoneAttachment3D.new()
+	ba.bone_name = "hand_r"
+	sk.add_child(ba)
+	var p: Node3D = (load("res://assets/weapons/pistolet.glb") as PackedScene).instantiate()
+	p.visible = false
+	ba.add_child(p)
+	_prises.append([g, sk, p, ap, anim])
+	_caler_arme.call_deferred()
+
+
+## Cale l'arme dans la main des gardes une fois la pose de visée appliquée (même calcul que l'aperçu).
+func _caler_arme() -> void:
+	if _prises.is_empty() or _faits.has("prises"):
+		return
+	_faits["prises"] = true
+	await get_tree().process_frame
+	await get_tree().process_frame
+	for e in _prises:
+		var g: Node3D = e[0]
+		var sk: Skeleton3D = e[1]
+		var p: Node3D = e[2]
+		var main := sk.global_transform * sk.get_bone_global_pose(sk.find_bone("hand_r"))
+		var milieu := sk.global_transform * sk.get_bone_global_pose(sk.find_bone("middle_01_r"))
+		var avant: Vector3 = g.global_basis.z.normalized()
+		var droite := Vector3.UP.cross(-avant).normalized()
+		var b := Basis(droite, Vector3.UP, -avant).orthonormalized().rotated(droite, deg_to_rad(-4))
+		p.global_transform = Transform3D(b, main.origin.lerp(milieu.origin, 0.55) + Vector3.DOWN * 0.035)
+		p.visible = true
+		(e[3] as AnimationPlayer).play(e[4], 0.3)
 
 
 # ---------------------------------------------------------------- jeu réel : souris
@@ -469,6 +551,13 @@ func _photo() -> void:
 			if t < 0.05:
 				j.global_position = Vector3(0.4, 0.05, -7.0)
 			_viser_vers(Vector3(-0.6, H - 0.7, -12.0), 4.0)
+		"sombre", "contre":
+			# lisibilité : garde dans la zone sombre près du poteau / garde au fond devant le rideau
+			if t < 0.05:
+				j.global_position = Vector3(0.6, 0.05, -2.6) if vue == "sombre" else Vector3(-0.7, 0.05, -8.4)
+			if gardes.size() >= 2:
+				_viser_vers(gardes[0 if vue == "sombre" else 1].global_position + Vector3(0, 1.3, 0), 4.0)
+			fin = 3.0   # laisse l'exposition automatique se poser
 		"penche":
 			j.auto_tenu["pencher_droite"] = true
 			_viser_vers(_torse(0), 4.0)
@@ -479,6 +568,10 @@ func _photo() -> void:
 				j.arme.chargeur = 0
 				j.auto_appui["recharger"] = true
 			fin = 0.5 + 2.4 * (float(OS.get_environment("RECH_U")) if OS.has_environment("RECH_U") else 0.45)
+			if _cam_ext:
+				# contrôle du trajet de la main gauche (ceinture → puits → culasse), vu de trois quarts avant gauche
+				_cam_ext.global_position = j.global_position + j.global_basis * Vector3(-1.1, 1.3, -1.1)
+				_cam_ext.look_at(j.global_position + Vector3(0, 1.15, 0))
 		"blesse":
 			_viser_vers(_torse(0), 4.0)
 			if t >= 0.6 and _une_fois("b1"):
