@@ -2,19 +2,19 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dvque7pcalp43"
-path="res://.godot/imported/pistolet_canon_rugosite.jpg-00f14bf8ab0bfa64e5f8e865c9a9ebae.ctex"
+uid="uid://clkhmjfnmd2m8"
+path="res://.godot/imported/pistolet_couleur.jpg-81d75f58e04b7bd40df0f2fac7f52973.ctex"
 metadata={
 "vram_texture": false
 }
 generator_parameters={
-"md5": "4d51ecbfd14be2dda14377d4bc72d2ff"
+"md5": "dc790125b2d7221048685290a0bd5ce9"
 }
 
 [deps]
 
-source_file="res://assets/weapons/pistolet_canon_rugosite.jpg"
-dest_files=["res://.godot/imported/pistolet_canon_rugosite.jpg-00f14bf8ab0bfa64e5f8e865c9a9ebae.ctex"]
+source_file="res://assets/weapons/pistolet_couleur.jpg"
+dest_files=["res://.godot/imported/pistolet_couleur.jpg-81d75f58e04b7bd40df0f2fac7f52973.ctex"]
 
 [params]
 

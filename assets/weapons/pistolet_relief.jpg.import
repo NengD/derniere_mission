@@ -2,19 +2,19 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dy4xgxjiupoum"
-path="res://.godot/imported/pistolet_carcasse_couleur.jpg-b2cea8fa8153d4b7221aadf161e94dfb.ctex"
+uid="uid://bdfcgu8xlxo8e"
+path="res://.godot/imported/pistolet_relief.jpg-b392e293aff175876cdce6ccb62d6d84.ctex"
 metadata={
 "vram_texture": false
 }
 generator_parameters={
-"md5": "d40a7bbd7a52b74b1a4b3b55a7293d23"
+"md5": "cb12afef5a5a79fd017aacad21abe63f"
 }
 
 [deps]
 
-source_file="res://assets/weapons/pistolet_carcasse_couleur.jpg"
-dest_files=["res://.godot/imported/pistolet_carcasse_couleur.jpg-b2cea8fa8153d4b7221aadf161e94dfb.ctex"]
+source_file="res://assets/weapons/pistolet_relief.jpg"
+dest_files=["res://.godot/imported/pistolet_relief.jpg-b392e293aff175876cdce6ccb62d6d84.ctex"]
 
 [params]
 

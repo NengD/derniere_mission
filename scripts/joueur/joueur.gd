@@ -22,6 +22,8 @@ signal tir_bruit(position: Vector3, portee: float)   # pour l'ouïe des gardes
 signal aide_changee(texte: String)
 signal munitions_changees(dans_arme: int, reserve: int)
 
+## Nom affiché de l'arme (clé de traduction : « pistolet 9 mm », aucune marque réelle dans le jeu)
+const NOM_ARME := "ARME_PISTOLET"
 const COUCHE_MONDE := 1
 const COUCHE_JOUEUR := 2
 const COUCHE_ENNEMIS := 4
@@ -103,6 +105,11 @@ var _flash_images := 0                 # images restantes du coup de feu (flamme
 var chargeur_visuel: MeshInstance3D
 var glissiere: Node3D                  # pièce mobile du glb (recule au tir, bloquée en arrière à vide)
 var chargeur_arme: Node3D              # chargeur engagé (pièce du glb)
+var chien: Node3D                      # chien (pièce du glb, pivote autour de X) : armé après le premier coup
+var detente_arme: Node3D               # queue de détente (pièce du glb, pivote autour de X)
+var _chien_repos := Transform3D.IDENTITY
+var _detente_repos := Transform3D.IDENTITY
+var _chien_arme := false
 var glissiere_bloquee := false
 var _glissiere_repos := Transform3D.IDENTITY
 var _chargeur_repos := Transform3D.IDENTITY
@@ -206,11 +213,18 @@ func _construire() -> void:
 		_glissiere_repos = glissiere.transform
 	if chargeur_arme:
 		_chargeur_repos = chargeur_arme.transform
+	chien = pistolet.find_child("chien", true, false)
+	detente_arme = pistolet.find_child("detente", true, false)
+	if chien:
+		_chien_repos = chien.transform
+	if detente_arme:
+		_detente_repos = detente_arme.transform
+	# repères du glb (bouche du canon, fenêtre d'éjection), valeurs par défaut sinon
 	bouche = Marker3D.new()
-	bouche.position = Vector3(0, 0.072, -0.152)
+	bouche.position = _repere_arme("bouche", Vector3(0, 0.071, -0.182))
 	pistolet.add_child(bouche)
 	ejection = Marker3D.new()
-	ejection.position = Vector3(0.009, 0.082, -0.056)
+	ejection.position = _repere_arme("ejection", Vector3(0.009, 0.075, -0.06))
 	pistolet.add_child(ejection)
 	_construire_effets_arme()
 	if OS.has_environment("DEBUG_LUMIERE_MAINS"):
@@ -1249,8 +1263,16 @@ func _maj_flamme() -> void:
 ## le dessus de la glissière et les mains), coudes ouverts hors champ, avant-bras qui entrent par les coins bas.
 const VISEE := Vector3(0.0, -0.14, -0.38)
 const HANCHE := Vector3(0.04, -0.22, -0.34)
-## Échelle du pistolet (modèle à 18,8 cm → ≈ 19,7 cm, proche d'un Glock 17 réel de 18,6 à 20,2 cm)
-const ECHELLE_ARME := 1.05
+## Échelle du pistolet (modèle déjà à la taille réelle : 21,7 cm, tools/blender/build_pistol_m9.py)
+const ECHELLE_ARME := 1.0
+
+
+## Position d'un repère vide du glb de l'arme (dans le repère de l'arme).
+func _repere_arme(nom: String, defaut: Vector3) -> Vector3:
+	var n := pistolet.find_child(nom, true, false) as Node3D
+	if n == null:
+		return defaut
+	return (pistolet.global_transform.affine_inverse() * n.global_transform).origin if n.is_inside_tree() else n.position
 
 
 ## Pose procédurale de l'arme dans le repère de la caméra.
@@ -1303,6 +1325,8 @@ func _pose_arme(delta: float, v: float) -> void:
 
 
 const COURSE_GLISSIERE := 0.034
+const ANGLE_CHIEN := 55.0       # degrés : chien armé (rabattu vers l'arrière)
+const ANGLE_DETENTE := 12.0     # degrés : queue de détente pressée
 
 
 ## La glissière revient en avant (relâchée par la main gauche ou par l'arrêtoir).
@@ -1337,6 +1361,15 @@ func _maj_glissiere(delta: float) -> void:
 				if u >= 0.32 and u < 0.45:
 					k = max(k, _lisse((u - 0.32) / 0.1))
 	glissiere.transform = _glissiere_repos * Transform3D(Basis.IDENTITY, Vector3(0, 0, COURSE_GLISSIERE * k))
+	# chien : la glissière qui recule l'arme (double action → simple action) ; reste armé ensuite
+	if k > 0.5:
+		_chien_arme = true
+	if chien:
+		var a := ANGLE_CHIEN if _chien_arme else _detente * ANGLE_CHIEN * 0.35
+		chien.transform = _chien_repos * Transform3D(Basis(Vector3.RIGHT, deg_to_rad(a)), Vector3.ZERO)
+	if detente_arme:
+		var d := 1.0 if (_depuis_tir < 0.08) else 0.0
+		detente_arme.transform = _detente_repos * Transform3D(Basis(Vector3.RIGHT, deg_to_rad(-ANGLE_DETENTE * d)), Vector3.ZERO)
 
 
 ## Chargeur engagé visible dans la poignée ? (caché pendant qu'il est dans la main ou absent)
@@ -1367,19 +1400,21 @@ static func _lisse(x: float) -> float:
 
 
 # --- mains (repère de l'arme : -Z avant, +Y haut, +X droite ; origine = poignée)
+## Réglées pour le pistolet 9 mm (poignée de 3,8 cm, glissière basse au-dessus de la main) : mains un peu
+## plus écartées et plus bas sur la poignée que pour l'ancien pistolet, pour dégager les organes de visée.
 ## main droite : X = dos de la main, Y = vers les doigts, Z = pouce
 static func main_droite() -> Transform3D:
 	var y := Vector3(-0.04, -0.25, -1.0).normalized()
 	var x := Vector3(0.98, 0.15, 0.0)
 	x = (x - y * x.dot(y)).normalized()
-	return Transform3D(Basis(x, y, x.cross(y)), Vector3(0.024, 0.035, 0.088))
+	return Transform3D(Basis(x, y, x.cross(y)), Vector3(0.027, 0.022, 0.088))
 
 
 ## main gauche (soutien) : X = paume, Y = vers les doigts, Z = pouce.
 ## Paume plaquée sur le flanc gauche de la poignée par-dessus les doigts droits, doigts qui descendent
 ## en enveloppant l'avant de la poignée sous le pontet, pouce le long de la carcasse pointé vers l'avant.
 static func main_gauche() -> Transform3D:
-	var p := Vector3(-0.05, 0.03, 0.055)
+	var p := Vector3(-0.053, 0.017, 0.055)
 	var y := Vector3(0.45, -0.6, -0.65).normalized()
 	var z := Vector3(0.05, 0.3, -1.0)
 	z = (z - y * z.dot(y)).normalized()

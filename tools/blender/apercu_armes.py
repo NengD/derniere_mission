@@ -27,7 +27,7 @@ SRC = os.path.join(ROOT, "_sources", "sketchfab")
 # longueur : longueur hors tout réelle (m) ; avant : sens du canon détecté à vérifier sur le rendu
 CONFIG = {
     "b4136758508c486cadcd96c74d7882b8": {"titre": "G17 9mm Pistol", "exclure": r"Cartridge", "rot": (0, 0, 0), "longueur": 0.186},
-    "94b88255551048d7990252946b5195be": {"titre": "Beretta M9A1", "exclure": r"XC2|Glass", "rot": (0, 0, 90), "longueur": 0.217},
+    "94b88255551048d7990252946b5195be": {"titre": "Beretta M9A1", "exclure": r"XC2|Glass", "rot": (0, 0, -90), "longueur": 0.217}  # canon vers -X à l'origine (90° le retournait),
     "9c3eb684a26e449e87d3124c297e7324": {"titre": "SIG Sauer P320", "garder": r"^Object_(4|6)$", "exclure": r"^$", "rot": (90, 0, 90), "longueur": 0.203},
     "d95901bd4dbf466cae5261f513dd6b56": {"titre": "Sig Sauer P229 LEGION", "exclure": r"2_p229|slide2|rounds", "rot": (0, 0, 0), "longueur": 0.180},
 }

@@ -340,7 +340,8 @@ func _lacher_arme(dir: Vector3) -> void:
 	pm.friction = 0.8
 	pm.bounce = 0.1
 	rb.physics_material_override = pm
-	for f in [[Vector3(0.03, 0.05, 0.2), Vector3(0, 0.045, -0.15)], [Vector3(0.03, 0.13, 0.05), Vector3(0, -0.05, -0.03)]]:
+	# formes du pistolet 9 mm (21,7 cm) : glissière et carcasse, puis poignée inclinée
+	for f in [[Vector3(0.036, 0.045, 0.215), Vector3(0, 0.058, -0.073)], [Vector3(0.036, 0.1, 0.055), Vector3(0, -0.01, 0.0)]]:
 		var cs := CollisionShape3D.new()
 		var b := BoxShape3D.new()
 		b.size = f[0]

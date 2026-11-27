@@ -9,6 +9,7 @@ extends Node3D
 ##   perf [0|1|2]  même scénario en temps réel, vsync coupée : i/s moyenne et 1 % bas dans logs/perf.txt
 ##   video_decor (avec --write-movie) : 9,5 s de marche lente pour montrer le décor (flaque, plafond, porte)
 ##   video_bras (avec --write-movie) : 9,6 s de bras et d'arme (marche, 4 tirs, culasse ouverte, rechargement à vide)
+##   video_pistolet (avec --write-movie) : 8 s, visée, 3 tirs jusqu'à la culasse ouverte, rechargement à vide
 ##   video_ragdoll [ext] (avec --write-movie) : 10,8 s, quatre gardes tués de quatre façons (tête, torse en
 ##     marche, jambe puis achèvement au sol, bras puis torse) : ragdolls tous différents
 ## En photo et vidéo, aucune entrée réelle n'est lue et la souris n'est jamais capturée.
@@ -469,6 +470,10 @@ func _physics_process(delta: float) -> void:
 		_video_bras()
 		if t >= 9.6 and _une_fois("fin"):
 			_quitter()
+	elif mode == "video_pistolet":
+		_video_pistolet()
+		if t >= 8.0 and _une_fois("fin"):
+			_quitter()
 	elif mode == "video_decor":
 		_video_decor()
 		if t >= 9.5 and _une_fois("fin"):
@@ -662,6 +667,31 @@ func _video_bras() -> void:
 		_viser_vers(_torse(1), 1.2)
 
 
+## Vidéo du pistolet (8 s) : visée, trois tirs (glissière, douilles, chien armé), culasse ouverte à vide,
+## rechargement à vide (chargeur qui tombe, glissière relâchée), puis de nouveau en visée.
+func _video_pistolet() -> void:
+	var j := joueur
+	j.auto_axes = Vector2.ZERO
+	j.auto_tenu.clear()
+	if t < 0.05:
+		j.global_position = Vector3(-0.2, 0.05, 0.6)
+		j.arme.chambre = true
+		j.arme.chargeur = 2
+	if _entre(0.0, 3.4):
+		j.auto_tenu["viser"] = true
+		_viser_vers(_torse(0), 1.6)
+		for s in [1.2, 1.75, 2.3]:
+			if t >= s and _une_fois("tir%s" % s):
+				j.auto_appui["tirer"] = true
+	if t >= 3.4 and _une_fois("recharge"):
+		j.auto_appui["recharger"] = true
+	if _entre(3.4, 6.0):
+		_regarder(rad_to_deg(j.lacet), -9.0, 0.4)
+	if _entre(6.0, 8.0):
+		j.auto_tenu["viser"] = true
+		_viser_vers(_torse(0), 1.6)
+
+
 ## Vidéo du décor (9,5 s) : marche lente, regard sur la flaque (reflet du néon), au plafond (gaine,
 ## câbles, tuyaux), sur la porte entrouverte, sur les affiches, puis vers le fond en contre-jour.
 func _video_decor() -> void:
@@ -726,6 +756,8 @@ func _maj_gizmos() -> void:
 ## Comparaison d'armes (captures seulement, variable ARME_ESSAI = chemin absolu d'un .glb) : le pistolet
 ## du jeu reste en place (pièces animées, repères) mais n'est plus dessiné ; le modèle d'essai, déjà
 ## orienté et mis à la taille réelle par tools/blender/apercu_armes.py, est accroché à sa place.
+## Gardé pour comparer les armes de la Phase 2 (fusil à pompe, fusil d'assaut) avant intégration :
+## ARME_ESSAI=<chemin complet .glb> godot --path . ... salle_test.tscn -- photo <png> visee
 func _arme_essai(chemin: String) -> void:
 	var doc := GLTFDocument.new()
 	var etat := GLTFState.new()

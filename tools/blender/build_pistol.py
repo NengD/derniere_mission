@@ -1,7 +1,8 @@
 """Pistolet semi-automatique générique 9 × 19 (modelé de zéro, aucune marque réelle).
 
-Usage : blender -b --factory-startup -P tools/blender/build_pistol.py
-Sortie : assets/weapons/pistolet.glb — origine = centre de la poignée (là où la main serre),
+ANCIEN pistolet (remplacé dans le jeu par tools/blender/build_pistol_m9.py le 27/11/2026).
+Usage : blender -b --factory-startup -P tools/blender/build_pistol.py [-- <sortie.glb>]
+Sortie par défaut : _sources/pistolet_maison.glb (n'écrase plus assets/weapons/pistolet.glb) — origine = centre de la poignée (là où la main serre),
 canon vers +Y dans Blender (donc vers -Z, l'avant, dans Godot).
 
 Pièces séparées (nœuds du glb, animées par scripts/joueur/joueur.gd) :
@@ -25,7 +26,8 @@ from mathutils import Matrix, Vector
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 TEX_TMP = os.path.join(ROOT, "_sources", "pistolet_tex")
-OUT = os.path.join(ROOT, "assets", "weapons", "pistolet.glb")
+import sys
+OUT = sys.argv[sys.argv.index("--") + 1] if "--" in sys.argv[:-1] else os.path.join(ROOT, "_sources", "pistolet_maison.glb")
 
 GRIP_ANGLE = math.radians(18.0)          # poignée inclinée vers l'arrière
 GRIP_TOP = Vector((0.0, -0.008, 0.045))   # centre du haut de la poignée
