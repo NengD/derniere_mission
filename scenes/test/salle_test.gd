@@ -62,6 +62,8 @@ func _ready() -> void:
 	joueur.global_position = Vector3(-0.3, 0.05, 0.8)
 	joueur.bus_reverb = "Rev_Couloir"
 	joueur.mort.connect(func() -> void: print("JOUEUR MORT"))
+	if OS.has_environment("ARME_ESSAI"):
+		_arme_essai(OS.get_environment("ARME_ESSAI"))
 	# pas de saccades d'image en photo (la capture attend une image dessinée)
 	joueur.effet.saccades = mode != "photo" and mode != "perf"
 	if mode == "jeu":
@@ -719,6 +721,25 @@ func _maj_gizmos() -> void:
 	_gizmos[3].global_transform = (sk.global_transform * sk.get_bone_global_pose(sk.find_bone("hand_l"))).orthonormalized()
 	_gizmos[2].scale = Vector3.ONE * 0.6
 	_gizmos[3].scale = Vector3.ONE * 0.6
+
+
+## Comparaison d'armes (captures seulement, variable ARME_ESSAI = chemin absolu d'un .glb) : le pistolet
+## du jeu reste en place (pièces animées, repères) mais n'est plus dessiné ; le modèle d'essai, déjà
+## orienté et mis à la taille réelle par tools/blender/apercu_armes.py, est accroché à sa place.
+func _arme_essai(chemin: String) -> void:
+	var doc := GLTFDocument.new()
+	var etat := GLTFState.new()
+	if doc.append_from_file(chemin, etat) != OK:
+		push_error("ARME_ESSAI illisible : " + chemin)
+		return
+	var essai := doc.generate_scene(etat) as Node3D
+	for mi in joueur.pistolet.find_children("*", "GeometryInstance3D", true, false):
+		(mi as GeometryInstance3D).layers = 0
+		(mi as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	joueur.pistolet.add_child(essai)
+	essai.scale = Vector3.ONE / joueur.pistolet.scale.x
+	joueur._calque_vue(essai)
+	print("ARME_ESSAI ", chemin.get_file())
 
 
 func _photo() -> void:

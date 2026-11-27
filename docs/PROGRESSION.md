@@ -3,7 +3,7 @@
 Mémoire de travail du projet : à relire après chaque compactage, à mettre à jour à chaque tâche terminée.
 
 ## Tâche en cours
-Phase 1 — chantier « réalisme » (issue #4) : les 4 chantiers (lumière, bras/arme + corrections, gardes, décor) sont FAITS et montrés. **EN ATTENTE de l'avis du propriétaire** sur l'ensemble et sur la caméra de poitrine. Ensuite : IA des gardes (arbre de comportement), sang/démembrement, niveau 1. **Pistolet Sketchfab ARRÊTÉ par le propriétaire (économie d'utilisation), à reprendre plus tard** : recherche de 2-3 modèles de pistolet 9 mm CC0/CC-BY et prépare une comparaison avant/après SANS intégrer ; choix à faire par le propriétaire.
+Phase 1 — chantier « réalisme » (issue #4) : les 4 chantiers (lumière, bras/arme + corrections, gardes, décor) sont FAITS et montrés. **EN ATTENTE de l'avis du propriétaire** sur l'ensemble et sur la caméra de poitrine. Ensuite : IA des gardes (arbre de comportement), sang/démembrement, niveau 1. **Pistolet Sketchfab : 3 choix prêts, EN ATTENTE du choix du propriétaire** (planche `captures/armes/pistolets_choix.jpg` ; P229 LEGION de NanouJune 9,1 k tris 9 pièces, M9A1 de Hung Do 17,8 k tris un seul maillage, P320 de Nollien 5,5 k tris ; tous CC-BY 4.0 ; outils `tools/fetch_sketchfab.py`, `tools/blender/apercu_armes.py`, essai en jeu `ARME_ESSAI=<glb>`) — recherche de 2-3 modèles de pistolet 9 mm CC0/CC-BY et prépare une comparaison avant/après SANS intégrer ; choix à faire par le propriétaire.
 
 ## Fait
 - Phase 0 validée (tag `v0.0-phase0`) : direction artistique A (photoréaliste sombre), conception (`docs/CONCEPTION.md`), ressources (`docs/phase0/RESSOURCES.md`).
